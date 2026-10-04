@@ -75,6 +75,9 @@ pub struct Library {
     index: HashMap<String, SourceIndex>,
     unsaved: Vec<SourceMeta>,
     warning: Option<String>,
+    /// Impostato quando library.json esiste ma non si è potuto leggere o mettere da parte:
+    /// salvare sovrascriverebbe le raccolte vere con una libreria vuota.
+    read_only: Option<String>,
 }
 
 fn now() -> u64 {
@@ -96,15 +99,26 @@ impl Library {
     pub fn load(dir: &Path) -> Library {
         let path = dir.join("library.json");
         let mut warning = None;
+        let mut read_only = None;
         let file = match std::fs::read(&path) {
-            Err(_) => LibraryFile::default(),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => LibraryFile::default(),
+            Err(e) => {
+                warning = Some(format!("Impossibile leggere la libreria ({e}): le modifiche non verranno salvate finché non riavvii l'app"));
+                read_only = Some(format!("Libreria in sola lettura: {e}"));
+                LibraryFile::default()
+            }
             Ok(bytes) => serde_json::from_slice(&bytes).unwrap_or_else(|_| {
-                let _ = std::fs::rename(&path, dir.join("library.bak"));
-                warning = Some("Libreria illeggibile: è stata messa da parte come library.bak".to_string());
+                match std::fs::rename(&path, dir.join("library.bak")) {
+                    Ok(()) => warning = Some("Libreria illeggibile: è stata messa da parte come library.bak".to_string()),
+                    Err(e) => {
+                        warning = Some(format!("Libreria illeggibile e non spostabile ({e}): le modifiche non verranno salvate"));
+                        read_only = Some(format!("Libreria in sola lettura: {e}"));
+                    }
+                }
                 LibraryFile::default()
             }),
         };
-        let mut lib = Library { dir: dir.to_path_buf(), file, index: HashMap::new(), unsaved: Vec::new(), warning };
+        let mut lib = Library { dir: dir.to_path_buf(), file, index: HashMap::new(), unsaved: Vec::new(), warning, read_only };
         let ids: Vec<String> = lib.file.sources.keys().cloned().collect();
         for id in ids {
             let files: Option<Vec<FileEntry>> = std::fs::read(lib.source_path(&id)).ok().and_then(|b| serde_json::from_slice(&b).ok());
@@ -124,12 +138,18 @@ impl Library {
         self.dir.join("sources").join(format!("{item_id}.json"))
     }
 
+    fn writable(&self) -> Result<(), String> {
+        self.read_only.clone().map_or(Ok(()), Err)
+    }
+
     fn save(&self) -> Result<(), String> {
+        self.writable()?;
         let json = serde_json::to_vec_pretty(&self.file).map_err(|e| e.to_string())?;
         write_atomic(&self.dir.join("library.json"), &json).map_err(|e| format!("Impossibile salvare la libreria: {e}"))
     }
 
     fn save_files(&self, item_id: &str, files: &[FileEntry]) -> Result<(), String> {
+        self.writable()?;
         let json = serde_json::to_vec(files).map_err(|e| e.to_string())?;
         write_atomic(&self.source_path(item_id), &json).map_err(|e| format!("Impossibile salvare la sorgente: {e}"))
     }
@@ -168,11 +188,15 @@ impl Library {
         Ok(n.to_string())
     }
 
+    /// Usata da tutte le operazioni che modificano una raccolta: in sola lettura si fermano qui,
+    /// prima di toccare lo stato in memoria.
     fn collection_mut(&mut self, id: &str) -> Result<&mut Collection, String> {
+        self.writable()?;
         self.file.collections.iter_mut().find(|c| c.id == id).ok_or_else(|| "Raccolta non trovata".to_string())
     }
 
     pub fn create_collection(&mut self, name: &str) -> Result<String, String> {
+        self.writable()?;
         let name = self.clean_name(name, None)?;
         self.file.next_id += 1;
         let id = format!("c{}", self.file.next_id);
@@ -292,6 +316,10 @@ impl Library {
     }
 
     pub fn add_unsaved(&mut self, item: Item) -> SourceMeta {
+        // Salvata nel frattempo (per esempio da "Aggiungi sorgenti"): vale quella.
+        if let Some(saved) = self.file.sources.get(&item.id) {
+            return saved.clone();
+        }
         let meta = meta_of(&item);
         self.index.insert(item.id.clone(), SourceIndex::new(&item.id, &item.files));
         self.unsaved.retain(|m| m.item_id != item.id);
@@ -302,7 +330,9 @@ impl Library {
     pub fn close_unsaved(&mut self, item_id: &str) {
         if let Some(pos) = self.unsaved.iter().position(|m| m.item_id == item_id) {
             self.unsaved.remove(pos);
-            self.index.remove(item_id);
+            if !self.file.sources.contains_key(item_id) {
+                self.index.remove(item_id);
+            }
         }
     }
 
@@ -543,4 +573,32 @@ mod tests {
         assert_eq!((m.file_count, m.error.as_deref()), (0, Some("Elenco mancante, aggiorna la sorgente")));
         assert_eq!(total(&lib, Scope::All), 0);
     }
+    /// Se un open_unsaved finisce dopo che la stessa sorgente è stata salvata, non deve
+    /// duplicarla né, chiudendo la copia Non salvata, togliere l'indice a quella salvata.
+    #[test]
+    fn unsaved_never_shadows_a_saved_source() {
+        let d = tempfile::tempdir().unwrap();
+        let mut lib = Library::load(d.path());
+        let c = lib.create_collection("Uno").unwrap();
+        lib.add_fetched(&c, item("x", &["1", "2"])).unwrap();
+        let m = lib.add_unsaved(item("x", &["1", "2", "3"]));
+        assert_eq!(m.file_count, 2, "restituisce la sorgente salvata");
+        assert!(lib.state().unsaved.is_empty());
+        lib.close_unsaved("x");
+        assert_eq!(total(&lib, Scope::All), 2);
+    }
+
+    /// Un errore di lettura che non sia "file inesistente" (file bloccato, permessi) non deve
+    /// far partire una libreria vuota che al primo salvataggio sovrascrive quella vera.
+    #[test]
+    fn unreadable_library_is_never_overwritten() {
+        let d = tempfile::tempdir().unwrap();
+        std::fs::create_dir(d.path().join("library.json")).unwrap();
+        let mut lib = Library::load(d.path());
+        let w = lib.take_warning().expect("avviso");
+        assert!(w.starts_with("Impossibile leggere la libreria"), "{w}");
+        assert!(lib.create_collection("Uno").unwrap_err().starts_with("Libreria in sola lettura"));
+        assert!(d.path().join("library.json").is_dir(), "il file originale resta intatto");
+    }
+
 }

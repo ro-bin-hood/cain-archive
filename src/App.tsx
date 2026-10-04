@@ -64,6 +64,18 @@ export default function App() {
     return () => mq.removeEventListener("change", apply);
   }, [theme]);
 
+  // Se la raccolta o la sorgente aperta sparisce (eliminata, tolta, rimasta orfana), si torna a
+  // "Tutte le sorgenti" invece di restare su una vista che non esiste più.
+  useEffect(() => {
+    if (view.kind !== "search") return;
+    const s = view.scope;
+    const exists =
+      s.kind === "collection" ? lib.collections.some((c) => c.id === s.id)
+      : s.kind === "source" ? lib.unsaved.some((m) => m.item_id === s.item_id) || lib.collections.some((c) => c.sources.some((x) => x.item_id === s.item_id))
+      : true;
+    if (!exists) setView({ kind: "search", scope: { kind: "all" } });
+  }, [lib, view]);
+
   const onError = useCallback((msg: string) => setAlert(msg), []);
 
   const updateSettings = (s: Settings) => {

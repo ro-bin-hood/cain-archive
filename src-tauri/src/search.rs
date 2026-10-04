@@ -51,8 +51,13 @@ pub fn search(sources: &[&SourceIndex], query: &str, originals_only: bool) -> Se
         }
     }
     let total = hits.len();
-    hits.sort_by(|(a, i), (b, j)| a.lower[*i].cmp(&b.lower[*j]).then_with(|| a.item_id.cmp(&b.item_id)));
-    hits.truncate(MAX_RESULTS);
+    let order = |(a, i): &(&SourceIndex, usize), (b, j): &(&SourceIndex, usize)| a.lower[*i].cmp(&b.lower[*j]).then_with(|| a.item_id.cmp(&b.item_id));
+    // Con molte corrispondenze basta separare le prime MAX_RESULTS e ordinare solo quelle.
+    if hits.len() > MAX_RESULTS {
+        hits.select_nth_unstable_by(MAX_RESULTS, order);
+        hits.truncate(MAX_RESULTS);
+    }
+    hits.sort_by(order);
     let results = hits
         .into_iter()
         .map(|(s, i)| {

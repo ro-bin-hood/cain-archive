@@ -95,33 +95,35 @@ pub fn logout(state: State<'_, AppState>) {
     *state.queue.auth.lock().unwrap() = None;
 }
 
+// I comandi della libreria girano fuori dal thread dell'interfaccia (`async`): una ricerca su
+// centinaia di migliaia di file, o un lock tenuto da un salvataggio, non bloccano la finestra.
 fn lib_state(state: &State<'_, AppState>) -> LibraryState {
     state.library.lock().unwrap().state()
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn library_state(state: State<'_, AppState>) -> LibraryState {
     lib_state(&state)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn take_library_warning(state: State<'_, AppState>) -> Option<String> {
     state.library.lock().unwrap().take_warning()
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn create_collection(state: State<'_, AppState>, name: String) -> Result<LibraryState, String> {
     state.library.lock().unwrap().create_collection(&name)?;
     Ok(lib_state(&state))
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn rename_collection(state: State<'_, AppState>, id: String, name: String) -> Result<LibraryState, String> {
     state.library.lock().unwrap().rename_collection(&id, &name)?;
     Ok(lib_state(&state))
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn delete_collection(state: State<'_, AppState>, id: String) -> Result<LibraryState, String> {
     state.library.lock().unwrap().delete_collection(&id)?;
     Ok(lib_state(&state))
@@ -133,13 +135,13 @@ pub async fn add_source(state: State<'_, AppState>, collection_id: String, input
     library::add_source(&state.library, state.queue.client(), state.queue.base_url(), auth.as_ref(), &collection_id, &input).await
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn remove_source(state: State<'_, AppState>, collection_id: String, item_id: String) -> Result<LibraryState, String> {
     state.library.lock().unwrap().remove_source(&collection_id, &item_id)?;
     Ok(lib_state(&state))
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn set_included(state: State<'_, AppState>, collection_id: String, item_id: String, included: bool) -> Result<LibraryState, String> {
     state.library.lock().unwrap().set_included(&collection_id, &item_id, included)?;
     Ok(lib_state(&state))
@@ -157,19 +159,19 @@ pub async fn open_unsaved(state: State<'_, AppState>, input: String) -> Result<S
     library::open_unsaved(&state.library, state.queue.client(), state.queue.base_url(), auth.as_ref(), &input).await
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn close_unsaved(state: State<'_, AppState>, item_id: String) -> LibraryState {
     state.library.lock().unwrap().close_unsaved(&item_id);
     lib_state(&state)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn save_unsaved(state: State<'_, AppState>, item_id: String, collection_id: String) -> Result<LibraryState, String> {
     state.library.lock().unwrap().save_unsaved(&item_id, &collection_id)?;
     Ok(lib_state(&state))
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn search(state: State<'_, AppState>, scope: Scope, query: String, originals_only: bool) -> Result<SearchResult, String> {
     state.library.lock().unwrap().search(&scope, &query, originals_only)
 }
