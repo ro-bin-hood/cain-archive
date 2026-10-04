@@ -198,11 +198,11 @@ pub fn read_import_file(path: String) -> Result<ParsedList, String> {
 /// Salva una raccolta come file di lista; restituisce il percorso scelto (None se annullato).
 #[tauri::command]
 pub async fn export_collection(app: AppHandle, state: State<'_, AppState>, id: String) -> Result<Option<String>, String> {
-    let (name, sources) = state.library.lock().unwrap().export_data(&id)?;
+    let (name, sources, subs) = state.library.lock().unwrap().export_tree(&id)?;
     let safe: String = name.chars().map(|c| if r#"<>:"/\|?*"#.contains(c) { '_' } else { c }).collect();
     let Some(file) = app.dialog().file().add_filter("Lista di sorgenti", &["txt"]).set_file_name(format!("{safe}.txt")).blocking_save_file() else { return Ok(None) };
     let path = file.into_path().map_err(|e| e.to_string())?;
-    std::fs::write(&path, import::format_list(&name, &sources)).map_err(|e| format!("{}: {e}", m("Impossibile salvare il file", "Could not save the file")))?;
+    std::fs::write(&path, import::format_list_with(&name, &sources, &subs)).map_err(|e| format!("{}: {e}", m("Impossibile salvare il file", "Could not save the file")))?;
     Ok(Some(path.to_string_lossy().into_owned()))
 }
 
@@ -227,5 +227,11 @@ pub fn copy_sources(state: State<'_, AppState>, to: String, item_ids: Vec<String
 #[tauri::command(async)]
 pub fn move_sources(state: State<'_, AppState>, from: String, to: String, item_ids: Vec<String>) -> Result<LibraryState, String> {
     state.library.lock().unwrap().move_sources(&from, &to, &item_ids)?;
+    Ok(lib_state(&state))
+}
+
+#[tauri::command(async)]
+pub fn create_subcollection(state: State<'_, AppState>, parent: String, name: String) -> Result<LibraryState, String> {
+    state.library.lock().unwrap().create_subcollection(&parent, &name)?;
     Ok(lib_state(&state))
 }

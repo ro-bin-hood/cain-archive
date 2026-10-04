@@ -98,6 +98,7 @@ pub fn run() {
             commands::remove_sources,
             commands::copy_sources,
             commands::move_sources,
+            commands::create_subcollection,
             commands::export_collection,
         ])
         .run(tauri::generate_context!())

@@ -33,6 +33,9 @@ struct Collection {
     id: String,
     name: String,
     sources: Vec<SourceRef>,
+    /// Raccolta padre: un solo livello, una sotto-raccolta non ne contiene altre.
+    #[serde(default)]
+    parent: Option<String>,
 }
 
 #[derive(Debug, Default, Serialize, Deserialize)]
@@ -54,6 +57,7 @@ pub struct CollectionView {
     pub id: String,
     pub name: String,
     pub sources: Vec<SourceView>,
+    pub parent: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -169,6 +173,7 @@ impl Library {
             .map(|c| CollectionView {
                 id: c.id.clone(),
                 name: c.name.clone(),
+                parent: c.parent.clone(),
                 sources: c
                     .sources
                     .iter()
@@ -179,13 +184,15 @@ impl Library {
         LibraryState { collections, unsaved: self.unsaved.clone() }
     }
 
-    fn clean_name(&self, name: &str, except: Option<&str>) -> Result<String, String> {
+    /// Nome ripulito e unico tra le raccolte con lo stesso padre (le sotto-raccolte di padri
+    /// diversi possono chiamarsi uguale, es. x360 › DLC e ps3 › DLC).
+    fn clean_name(&self, name: &str, except: Option<&str>, parent: Option<&str>) -> Result<String, String> {
         let n = name.trim();
         if n.is_empty() {
             return Err(m("Nome vuoto", "Empty name").into());
         }
         let lower = n.to_lowercase();
-        if self.file.collections.iter().any(|c| Some(c.id.as_str()) != except && c.name.to_lowercase() == lower) {
+        if self.file.collections.iter().any(|c| Some(c.id.as_str()) != except && c.parent.as_deref() == parent && c.name.to_lowercase() == lower) {
             return Err(m("Esiste già una raccolta con questo nome", "A collection with this name already exists").into());
         }
         Ok(n.to_string())
@@ -200,24 +207,41 @@ impl Library {
 
     pub fn create_collection(&mut self, name: &str) -> Result<String, String> {
         self.writable()?;
-        let name = self.clean_name(name, None)?;
+        let name = self.clean_name(name, None, None)?;
         self.file.next_id += 1;
         let id = format!("c{}", self.file.next_id);
-        self.file.collections.push(Collection { id: id.clone(), name, sources: Vec::new() });
+        self.file.collections.push(Collection { id: id.clone(), name, sources: Vec::new(), parent: None });
+        self.save()?;
+        Ok(id)
+    }
+
+    pub fn create_subcollection(&mut self, parent: &str, name: &str) -> Result<String, String> {
+        self.writable()?;
+        let p = self.file.collections.iter().find(|c| c.id == parent).ok_or_else(|| m("Raccolta non trovata", "Collection not found").to_string())?;
+        if p.parent.is_some() {
+            return Err(m("Le sotto-raccolte non possono contenerne altre", "Subcollections cannot contain other collections").into());
+        }
+        let name = self.clean_name(name, None, Some(parent))?;
+        self.file.next_id += 1;
+        let id = format!("c{}", self.file.next_id);
+        // Subito dopo il padre e le sue sotto-raccolte, così l'ordine nel file resta leggibile.
+        let at = self.file.collections.iter().rposition(|c| c.id == parent || c.parent.as_deref() == Some(parent)).map_or(self.file.collections.len(), |i| i + 1);
+        self.file.collections.insert(at, Collection { id: id.clone(), name, sources: Vec::new(), parent: Some(parent.to_string()) });
         self.save()?;
         Ok(id)
     }
 
     pub fn rename_collection(&mut self, id: &str, name: &str) -> Result<(), String> {
-        self.collection_mut(id)?;
-        let name = self.clean_name(name, Some(id))?;
+        let parent = self.collection_mut(id)?.parent.clone();
+        let name = self.clean_name(name, Some(id), parent.as_deref())?;
         self.collection_mut(id)?.name = name;
         self.save()
     }
 
     pub fn delete_collection(&mut self, id: &str) -> Result<(), String> {
         let before = self.file.collections.len();
-        self.file.collections.retain(|c| c.id != id);
+        // Con il padre se ne vanno anche le sue sotto-raccolte.
+        self.file.collections.retain(|c| c.id != id && c.parent.as_deref() != Some(id));
         if self.file.collections.len() == before {
             return Err(m("Raccolta non trovata", "Collection not found").into());
         }
@@ -409,6 +433,20 @@ impl Library {
         Ok((c.name.clone(), sources))
     }
 
+    /// Nome, sorgenti e sotto-raccolte (nome, sorgenti) di una raccolta, per l'esportazione.
+    #[allow(clippy::type_complexity)]
+    pub fn export_tree(&self, id: &str) -> Result<(String, Vec<(String, Option<String>)>, Vec<(String, Vec<(String, Option<String>)>)>), String> {
+        let (name, sources) = self.export_data(id)?;
+        let subs = self
+            .file
+            .collections
+            .iter()
+            .filter(|c| c.parent.as_deref() == Some(id))
+            .map(|c| self.export_data(&c.id).map(|(n, s)| (n, s)))
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok((name, sources, subs))
+    }
+
     pub fn search(&self, scope: &Scope, query: &str, originals_only: bool) -> Result<SearchResult, String> {
         self.search_with(scope, query, &Filters { originals_only, ..Filters::default() })
     }
@@ -416,17 +454,20 @@ impl Library {
     pub fn search_with(&self, scope: &Scope, query: &str, filters: &Filters) -> Result<SearchResult, String> {
         let ids: Vec<&str> = match scope {
             Scope::All => self.file.collections.iter().flat_map(|c| c.sources.iter().map(|r| r.item_id.as_str())).collect(),
-            Scope::Collection { id } => self
-                .file
-                .collections
-                .iter()
-                .find(|c| &c.id == id)
-                .ok_or_else(|| m("Raccolta non trovata", "Collection not found").to_string())?
-                .sources
-                .iter()
-                .filter(|r| r.included)
-                .map(|r| r.item_id.as_str())
-                .collect(),
+            Scope::Collection { id } => {
+                if !self.file.collections.iter().any(|c| &c.id == id) {
+                    return Err(m("Raccolta non trovata", "Collection not found").to_string());
+                }
+                // La raccolta e le sue sotto-raccolte, solo le sorgenti incluse.
+                self.file
+                    .collections
+                    .iter()
+                    .filter(|c| &c.id == id || c.parent.as_deref() == Some(id.as_str()))
+                    .flat_map(|c| c.sources.iter())
+                    .filter(|r| r.included)
+                    .map(|r| r.item_id.as_str())
+                    .collect()
+            }
             Scope::Source { item_id } => {
                 if self.known(item_id).is_none() {
                     return Err(m("Sorgente non trovata", "Source not found").into());
@@ -720,6 +761,55 @@ mod tests {
         assert_eq!(lib.move_sources(&a, &a, &["z".into()]).unwrap_err(), "Origine e destinazione coincidono");
         assert_eq!(lib.copy_sources("c99", &["z".into()]).unwrap_err(), "Raccolta non trovata");
         assert_eq!(lib.copy_sources(&b, &["nope".into()]).unwrap_err(), "Sorgente non trovata");
+    }
+
+    #[test]
+    fn subcollections_one_level_with_own_names() {
+        let d = tempfile::tempdir().unwrap();
+        let mut lib = Library::load(d.path());
+        let x = lib.create_collection("x360").unwrap();
+        let p = lib.create_collection("ps3").unwrap();
+        let dlc = lib.create_subcollection(&x, "DLC").unwrap();
+        lib.create_subcollection(&p, "dlc").unwrap();
+        assert_eq!(lib.create_subcollection(&x, " dlc ").unwrap_err(), "Esiste già una raccolta con questo nome");
+        assert_eq!(lib.create_subcollection(&dlc, "Altro").unwrap_err(), "Le sotto-raccolte non possono contenerne altre");
+        assert_eq!(lib.create_subcollection("c99", "Altro").unwrap_err(), "Raccolta non trovata");
+        assert_eq!(lib.rename_collection(&dlc, "DLC").map(|_| ()), Ok(()));
+        let st = lib.state();
+        let sub = st.collections.iter().find(|c| c.id == dlc).unwrap();
+        assert_eq!(sub.parent.as_deref(), Some(x.as_str()));
+        assert_eq!(st.collections.iter().find(|c| c.id == x).unwrap().parent, None);
+    }
+
+    #[test]
+    fn parent_search_includes_subcollections() {
+        let d = tempfile::tempdir().unwrap();
+        let mut lib = Library::load(d.path());
+        let x = lib.create_collection("x360").unwrap();
+        let dlc = lib.create_subcollection(&x, "DLC").unwrap();
+        let xbla = lib.create_subcollection(&x, "XBLA").unwrap();
+        lib.add_fetched(&x, item("g", &["1", "2"])).unwrap();
+        lib.add_fetched(&dlc, item("d", &["3"])).unwrap();
+        lib.add_fetched(&xbla, item("a", &["4", "5", "6"])).unwrap();
+        lib.set_included(&xbla, "a", false).unwrap();
+        assert_eq!(total(&lib, Scope::Collection { id: x.clone() }), 3, "padre + DLC, XBLA esclusa");
+        assert_eq!(total(&lib, Scope::Collection { id: dlc.clone() }), 1);
+        assert_eq!(total(&lib, Scope::All), 6);
+        let (name, sources, subs) = lib.export_tree(&x).unwrap();
+        assert_eq!((name.as_str(), sources.len(), subs.len()), ("x360", 1, 2));
+        assert_eq!(subs[0].0, "DLC");
+    }
+
+    #[test]
+    fn deleting_a_parent_deletes_its_subcollections() {
+        let d = tempfile::tempdir().unwrap();
+        let mut lib = Library::load(d.path());
+        let x = lib.create_collection("x360").unwrap();
+        let dlc = lib.create_subcollection(&x, "DLC").unwrap();
+        lib.add_fetched(&dlc, item("d", &["3"])).unwrap();
+        lib.delete_collection(&x).unwrap();
+        assert!(lib.state().collections.is_empty());
+        assert!(lib.known("d").is_none(), "sorgente rimasta orfana");
     }
 
 }
