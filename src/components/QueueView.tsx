@@ -8,8 +8,8 @@ type Props = { jobs: Job[]; running: boolean; progress: Snapshot | null };
 
 export function QueueView({ jobs, running, progress }: Props) {
   const { t } = useT();
-  // Riordino col mouse (il drag & drop HTML5 non funziona nella WebView con il rilascio dei file
-  // attivo): `over` è la posizione in cui finirà il file trascinato.
+  // Mouse-based reordering (HTML5 drag & drop doesn't work in the WebView while file dropping
+  // is enabled): `over` is where the dragged file will land.
   const listRef = useRef<HTMLDivElement>(null);
   const [drag, setDrag] = useState<{ id: number; over: number } | null>(null);
   const onGrab = useCallback((e: MouseEvent, id: number) => {
@@ -29,7 +29,7 @@ export function QueueView({ jobs, running, progress }: Props) {
       setDrag(null);
       const ids = rows().map((r) => Number(r.dataset.job));
       const from = ids.indexOf(id);
-      // Rilasciato sopra di sé o subito dopo: nessuno spostamento.
+      // Dropped on itself or right after itself: no move.
       if (from < 0 || over === from || over === from + 1) return;
       api.moveJob(id, over < ids.length ? ids[over] : null);
     };

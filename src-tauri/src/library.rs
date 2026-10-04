@@ -2,7 +2,7 @@ use crate::ia::{self, Auth, FileEntry, Item};
 use crate::i18n::m;
 use crate::import::SourceList;
 
-/// Nome di una raccolta con le sue sorgenti.
+/// Name of a collection with its sources.
 type NamedList = (String, SourceList);
 use crate::search::{self, Filters, SearchResult, SourceIndex};
 use crate::store::write_atomic;
@@ -37,7 +37,7 @@ struct Collection {
     id: String,
     name: String,
     sources: Vec<SourceRef>,
-    /// Raccolta padre: un solo livello, una sotto-raccolta non ne contiene altre.
+    /// Parent collection: one level only, a subcollection contains no others.
     #[serde(default)]
     parent: Option<String>,
 }
@@ -79,15 +79,15 @@ pub enum Scope {
     Unsaved,
 }
 
-/// Raccolte, sorgenti salvate (su disco) e Non salvate (solo in memoria), con gli indici di ricerca.
+/// Collections, saved sources (on disk) and unsaved ones (in memory only), with their search indexes.
 pub struct Library {
     dir: PathBuf,
     file: LibraryFile,
     index: HashMap<String, SourceIndex>,
     unsaved: Vec<SourceMeta>,
     warning: Option<String>,
-    /// Impostato quando library.json esiste ma non si è potuto leggere o mettere da parte:
-    /// salvare sovrascriverebbe le raccolte vere con una libreria vuota.
+    /// Set when library.json exists but could not be read or set aside:
+    /// saving would overwrite the real collections with an empty library.
     read_only: Option<String>,
 }
 
@@ -188,8 +188,8 @@ impl Library {
         LibraryState { collections, unsaved: self.unsaved.clone() }
     }
 
-    /// Nome ripulito e unico tra le raccolte con lo stesso padre (le sotto-raccolte di padri
-    /// diversi possono chiamarsi uguale, es. x360 › DLC e ps3 › DLC).
+    /// Trimmed name, unique among collections with the same parent (subcollections of different
+    /// parents may share a name, e.g. x360 › DLC and ps3 › DLC).
     fn clean_name(&self, name: &str, except: Option<&str>, parent: Option<&str>) -> Result<String, String> {
         let n = name.trim();
         if n.is_empty() {
@@ -202,8 +202,8 @@ impl Library {
         Ok(n.to_string())
     }
 
-    /// Usata da tutte le operazioni che modificano una raccolta: in sola lettura si fermano qui,
-    /// prima di toccare lo stato in memoria.
+    /// Used by every operation that changes a collection: in read-only mode they stop here,
+    /// before touching the in-memory state.
     fn collection_mut(&mut self, id: &str) -> Result<&mut Collection, String> {
         self.writable()?;
         self.file.collections.iter_mut().find(|c| c.id == id).ok_or_else(|| m("Raccolta non trovata", "Collection not found").to_string())
@@ -228,7 +228,7 @@ impl Library {
         let name = self.clean_name(name, None, Some(parent))?;
         self.file.next_id += 1;
         let id = format!("c{}", self.file.next_id);
-        // Subito dopo il padre e le sue sotto-raccolte, così l'ordine nel file resta leggibile.
+        // Right after the parent and its subcollections, so the file order stays readable.
         let at = self.file.collections.iter().rposition(|c| c.id == parent || c.parent.as_deref() == Some(parent)).map_or(self.file.collections.len(), |i| i + 1);
         self.file.collections.insert(at, Collection { id: id.clone(), name, sources: Vec::new(), parent: Some(parent.to_string()) });
         self.save()?;
@@ -244,7 +244,7 @@ impl Library {
 
     pub fn delete_collection(&mut self, id: &str) -> Result<(), String> {
         let before = self.file.collections.len();
-        // Con il padre se ne vanno anche le sue sotto-raccolte.
+        // Deleting a parent also deletes its subcollections.
         self.file.collections.retain(|c| c.id != id && c.parent.as_deref() != Some(id));
         if self.file.collections.len() == before {
             return Err(m("Raccolta non trovata", "Collection not found").into());
@@ -266,15 +266,15 @@ impl Library {
         self.save()
     }
 
-    /// Toglie più sorgenti da una raccolta; quelle rimaste orfane vengono cancellate.
+    /// Removes several sources from a collection; those left orphaned are deleted.
     pub fn remove_sources(&mut self, collection_id: &str, ids: &[String]) -> Result<(), String> {
         self.collection_mut(collection_id)?.sources.retain(|r| !ids.contains(&r.item_id));
         self.drop_orphans();
         self.save()
     }
 
-    /// Riferimenti (con la spunta) alle sorgenti indicate: da `from` se dato, altrimenti dalla
-    /// prima raccolta che le contiene.
+    /// References (with their inclusion flag) to the given sources: from `from` if given, otherwise
+    /// from the first collection that contains them.
     fn refs_for(&self, from: Option<&str>, ids: &[String]) -> Result<Vec<SourceRef>, String> {
         ids.iter()
             .map(|id| {
@@ -301,7 +301,7 @@ impl Library {
         Ok(())
     }
 
-    /// Copia sorgenti salvate in un'altra raccolta, conservando la spunta; niente doppioni.
+    /// Copies saved sources into another collection, keeping the inclusion flag; no duplicates.
     pub fn copy_sources(&mut self, to: &str, ids: &[String]) -> Result<(), String> {
         self.collection_mut(to)?;
         let refs = self.refs_for(None, ids)?;
@@ -309,7 +309,7 @@ impl Library {
         self.save()
     }
 
-    /// Sposta sorgenti da una raccolta a un'altra, conservando la spunta.
+    /// Moves sources from one collection to another, keeping the inclusion flag.
     pub fn move_sources(&mut self, from: &str, to: &str, ids: &[String]) -> Result<(), String> {
         if from == to {
             return Err(m("Origine e destinazione coincidono", "Source and destination are the same").into());
@@ -322,7 +322,7 @@ impl Library {
         self.save()
     }
 
-    /// Cancella le sorgenti salvate che non sono più in nessuna raccolta.
+    /// Deletes saved sources that are no longer in any collection.
     fn drop_orphans(&mut self) {
         let used: HashSet<&str> = self.file.collections.iter().flat_map(|c| c.sources.iter().map(|r| r.item_id.as_str())).collect();
         let orphans: Vec<String> = self.file.sources.keys().filter(|k| !used.contains(k.as_str())).cloned().collect();
@@ -345,8 +345,8 @@ impl Library {
         Ok(())
     }
 
-    /// Collega alla raccolta una sorgente già nota, salvando una Non salvata se serve.
-    /// `None` = sorgente sconosciuta, da scaricare.
+    /// Links an already known source to the collection, saving an unsaved one if needed.
+    /// `None` = unknown source, to be downloaded.
     pub fn link_known(&mut self, collection_id: &str, item_id: &str) -> Result<Option<SourceMeta>, String> {
         self.collection_mut(collection_id)?;
         if let Some(pos) = self.unsaved.iter().position(|m| m.item_id == item_id) {
@@ -403,7 +403,7 @@ impl Library {
     }
 
     pub fn add_unsaved(&mut self, item: Item) -> SourceMeta {
-        // Salvata nel frattempo (per esempio da "Aggiungi sorgenti"): vale quella.
+        // Saved meanwhile (e.g. from "Add sources"): that one wins.
         if let Some(saved) = self.file.sources.get(&item.id) {
             return saved.clone();
         }
@@ -430,14 +430,14 @@ impl Library {
         self.link_known(collection_id, item_id).map(|_| ())
     }
 
-    /// Nome e sorgenti (identificatore, titolo) di una raccolta, nell'ordine in cui sono state aggiunte.
+    /// Name and sources (identifier, title) of a collection, in the order they were added.
     pub fn export_data(&self, id: &str) -> Result<NamedList, String> {
         let c = self.file.collections.iter().find(|c| c.id == id).ok_or_else(|| m("Raccolta non trovata", "Collection not found").to_string())?;
         let sources = c.sources.iter().map(|r| (r.item_id.clone(), self.file.sources.get(&r.item_id).and_then(|m| m.title.clone()))).collect();
         Ok((c.name.clone(), sources))
     }
 
-    /// Nome, sorgenti e sotto-raccolte (nome, sorgenti) di una raccolta, per l'esportazione.
+    /// Name, sources and subcollections (name, sources) of a collection, for export.
     pub fn export_tree(&self, id: &str) -> Result<(String, SourceList, Vec<NamedList>), String> {
         let (name, sources) = self.export_data(id)?;
         let subs = self
@@ -461,7 +461,7 @@ impl Library {
                 if !self.file.collections.iter().any(|c| &c.id == id) {
                     return Err(m("Raccolta non trovata", "Collection not found").to_string());
                 }
-                // La raccolta e le sue sotto-raccolte, solo le sorgenti incluse.
+                // The collection and its subcollections, included sources only.
                 self.file
                     .collections
                     .iter()
@@ -484,7 +484,7 @@ impl Library {
     }
 }
 
-/// Aggiunge una sorgente a una raccolta: la collega se già nota, altrimenti ne scarica l'elenco.
+/// Adds a source to a collection: links it if already known, otherwise downloads its file list.
 pub async fn add_source(lib: &Mutex<Library>, client: &reqwest::Client, base: &str, auth: Option<&Auth>, collection_id: &str, input: &str) -> Result<SourceMeta, String> {
     let link = ia::parse_link(input).ok_or_else(|| m("Link non riconosciuto", "Link not recognized").to_string())?;
     let known = lib.lock().unwrap().link_known(collection_id, &link.item_id)?;
@@ -495,7 +495,7 @@ pub async fn add_source(lib: &Mutex<Library>, client: &reqwest::Client, base: &s
     lib.lock().unwrap().add_fetched(collection_id, item)
 }
 
-/// Riscarica l'elenco; se fallisce resta quello vecchio e l'errore viene registrato.
+/// Downloads the file list again; on failure the old list stays and the error is recorded.
 pub async fn refresh_source(lib: &Mutex<Library>, client: &reqwest::Client, base: &str, auth: Option<&Auth>, item_id: &str) -> Result<SourceMeta, String> {
     let exists = lib.lock().unwrap().known(item_id).is_some();
     if !exists {
@@ -505,7 +505,7 @@ pub async fn refresh_source(lib: &Mutex<Library>, client: &reqwest::Client, base
     lib.lock().unwrap().apply_refresh(item_id, fetched)
 }
 
-/// Apre una sorgente come Non salvata; se è già nota (salvata o aperta) la riusa.
+/// Opens a source as unsaved; if already known (saved or open) it is reused.
 pub async fn open_unsaved(lib: &Mutex<Library>, client: &reqwest::Client, base: &str, auth: Option<&Auth>, input: &str) -> Result<SourceMeta, String> {
     let link = ia::parse_link(input).ok_or_else(|| m("Link non riconosciuto", "Link not recognized").to_string())?;
     let known = lib.lock().unwrap().known(&link.item_id);
@@ -687,8 +687,8 @@ mod tests {
         assert_eq!((m.file_count, m.error.as_deref()), (0, Some("Elenco mancante, aggiorna la sorgente")));
         assert_eq!(total(&lib, Scope::All), 0);
     }
-    /// Se un open_unsaved finisce dopo che la stessa sorgente è stata salvata, non deve
-    /// duplicarla né, chiudendo la copia Non salvata, togliere l'indice a quella salvata.
+    /// If an open_unsaved finishes after the same source was saved, it must not
+    /// duplicate it nor, when the unsaved copy is closed, drop the saved one's index.
     #[test]
     fn unsaved_never_shadows_a_saved_source() {
         let d = tempfile::tempdir().unwrap();
@@ -702,8 +702,8 @@ mod tests {
         assert_eq!(total(&lib, Scope::All), 2);
     }
 
-    /// Un errore di lettura che non sia "file inesistente" (file bloccato, permessi) non deve
-    /// far partire una libreria vuota che al primo salvataggio sovrascrive quella vera.
+    /// A read error other than "file not found" (locked file, permissions) must not
+    /// start an empty library that overwrites the real one on the first save.
     #[test]
     fn unreadable_library_is_never_overwritten() {
         let d = tempfile::tempdir().unwrap();

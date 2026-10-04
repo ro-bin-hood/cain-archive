@@ -18,12 +18,12 @@ type Props = {
   onRename: (c: CollectionView) => void;
   onAddSources: (collectionId: string) => void;
   onSaveUnsaved: (itemId: string) => void;
-  /** Chiede il nome di una nuova raccolta, la crea e poi esegue `then` con il suo id. */
+  /** Asks for a new collection name, creates it, then runs `then` with its id. */
   onNewCollectionThen: (then: (collectionId: string) => Promise<void>) => void;
   onNewSubcollection: (parentId: string) => void;
 };
 
-/** Sorgenti selezionate (sempre dentro una sola raccolta) e menu contestuale aperto. */
+/** Selected sources (always within one collection) and the open context menu. */
 type Picked = { cid: string; ids: Set<string>; anchor: string };
 type Ctx = { x: number; y: number; cid: string; ids: string[] };
 
@@ -36,15 +36,15 @@ export function Sidebar({ width, lib, view, queueCount, onSelect, onLibrary, onE
   const [picked, setPicked] = useState<Picked | null>(null);
   const [ctx, setCtx] = useState<Ctx | null>(null);
 
-  // Esc chiude il menu contestuale e svuota la selezione.
+  // Esc closes the context menu and clears the selection.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") { setCtx(null); setPicked(null); } };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-  // Clic su una sorgente: Ctrl aggiunge/toglie, Shift seleziona l'intervallo dall'ultima cliccata,
-  // il clic semplice apre la sorgente e la rende l'unica selezionata.
+  // Clicking a source: Ctrl adds/removes, Shift selects the range from the last clicked one,
+  // a plain click opens the source and makes it the only selected one.
   const clickSource = (e: MouseEvent, c: CollectionView, id: string) => {
     if ((e.ctrlKey || e.metaKey) && picked?.cid === c.id) {
       const ids = new Set(picked.ids);
@@ -111,7 +111,7 @@ export function Sidebar({ width, lib, view, queueCount, onSelect, onLibrary, onE
   const childrenOf = (id: string) => lib.collections.filter((c) => c.parent === id);
   const targets = orderedCollections(lib);
 
-  // Una raccolta con le sue sorgenti e, se è un padre, le sue sotto-raccolte rientrate.
+  // A collection with its sources and, for a parent, its indented subcollections.
   const renderCollection = (c: CollectionView): ReactNode => {
     const kids = childrenOf(c.id);
     const allSources = [...c.sources, ...kids.flatMap((k) => k.sources)];

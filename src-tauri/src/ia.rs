@@ -89,7 +89,7 @@ pub fn files_from_metadata(meta: &Value) -> Vec<FileEntry> {
         .collect()
 }
 
-/// Client senza redirect automatici: li segue `get`, che sa quando tenere le credenziali.
+/// Client without automatic redirects: `get` follows them and knows when to keep credentials.
 pub fn client() -> Client {
     Client::builder()
         .redirect(Policy::none())
@@ -118,8 +118,8 @@ fn trusted(orig: &Url, next: &Url) -> bool {
         || next.host_str().is_some_and(|h| h == "archive.org" || h.ends_with(".archive.org"))
 }
 
-/// GET che segue i redirect a mano. reqwest toglierebbe Cookie/Authorization quando il redirect
-/// cambia host (archive.org/download → iaNNN.us.archive.org), ma archive.org ne ha bisogno.
+/// GET that follows redirects by hand. reqwest would drop Cookie/Authorization when the redirect
+/// changes host (archive.org/download → iaNNN.us.archive.org), but archive.org needs them.
 pub async fn get(client: &Client, url: &str, headers: &HeaderMap) -> Result<Response, String> {
     let orig = Url::parse(url).map_err(|e| e.to_string())?;
     let mut url = orig.clone();
@@ -139,7 +139,7 @@ pub async fn get(client: &Client, url: &str, headers: &HeaderMap) -> Result<Resp
     Err(m("troppi redirect", "too many redirects").into())
 }
 
-/// `metadata.title` può essere una stringa o una lista di stringhe.
+/// `metadata.title` can be a string or a list of strings.
 pub fn title_of(meta: &Value) -> Option<String> {
     match meta.pointer("/metadata/title")? {
         Value::String(s) => Some(s.clone()),

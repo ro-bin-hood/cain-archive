@@ -41,7 +41,7 @@ export default function App() {
   const langRef = useRef<"it" | "en">("it");
   dialogRef.current = dialog;
 
-  // File di lista trascinati sulla finestra: si importano uno alla volta, ognuno nella sua finestra.
+  // List files dropped on the window: imported one at a time, each in its own dialog.
   useEffect(() => {
     const un = getCurrentWebview().onDragDropEvent((e) => {
       const p = e.payload;
@@ -71,10 +71,10 @@ export default function App() {
       .finally(() => setReading(false));
   }, [dialog, reading, pending]);
 
-  // Bordo trascinabile della barra laterale (180–520 px); doppio clic = larghezza iniziale.
+  // Draggable sidebar edge (180–520 px); double-click = initial width.
   const saveWidth = (w: number) => {
     setSidebarWidth(w);
-    try { localStorage.setItem("sidebarWidth", String(w)); } catch { /* solo comodità */ }
+    try { localStorage.setItem("sidebarWidth", String(w)); } catch { /* convenience only */ }
   };
   const startResize = (e: MouseEvent) => {
     e.preventDefault();
@@ -112,8 +112,8 @@ export default function App() {
     return () => { subs.forEach((p) => p.then((un) => un())); };
   }, []);
 
-  // Tema: "system" lascia decidere a prefers-color-scheme, altrimenti forza chiaro/scuro.
-  // Anche lo sfondo nativo della finestra si adegua, così ridimensionando non lampeggia bianco.
+  // Theme: "system" lets prefers-color-scheme decide, otherwise light/dark is forced.
+  // The native window background follows too, so resizing doesn't flash white.
   const theme = settings?.theme;
   useEffect(() => {
     if (!theme) return;
@@ -131,8 +131,8 @@ export default function App() {
     return () => mq.removeEventListener("change", apply);
   }, [theme]);
 
-  // Se la raccolta o la sorgente aperta sparisce (eliminata, tolta, rimasta orfana), si torna a
-  // "Tutte le sorgenti" invece di restare su una vista che non esiste più.
+  // If the open collection or source disappears (deleted, removed, orphaned), go back to
+  // "All sources" instead of staying on a view that no longer exists.
   useEffect(() => {
     if (view.kind !== "search") return;
     const s = view.scope;
@@ -145,7 +145,7 @@ export default function App() {
 
   const onError = useCallback((msg: string) => setAlert(msg), []);
 
-  // Lingua: "Automatico" segue il sistema; la lingua effettiva va anche al motore per i suoi messaggi.
+  // Language: "Automatic" follows the system; the effective language also goes to the engine for its messages.
   const lang = resolveLang(settings?.language ?? "system");
   const t = (it: string, vars?: Record<string, string | number>) => translate(lang, it, vars);
   langRef.current = lang;
@@ -159,7 +159,7 @@ export default function App() {
     api.setSettings(s).catch((e) => setAlert(String(e)));
   };
 
-  // Link incollati nella ricerca: si aprono come Non salvate; si seleziona l'ultima aperta.
+  // Links pasted into the search bar open as unsaved sources; the last one opened is selected.
   const openLinks = async (links: string[]) => {
     const errors: string[] = [];
     let last: string | null = null;
@@ -175,7 +175,7 @@ export default function App() {
     if (errors.length) setAlert(errors.join("\n"));
   };
 
-  // "Importa raccolta": il file letto in Rust precompila la finestra di aggiunta.
+  // "Import collection": the file read in Rust prefills the add dialog.
   const importList = () => {
     api.pickImportFile().then((list) => {
       if (!list) return;

@@ -1,5 +1,5 @@
 :root{--bg:#eef2f9;--fg:#18213a;--mu:#6a7590;--bd:#d6deec;--field:#fff;--card:#fff;--line:#edf0f6;--ac:#2f6fed;--acs:#e6edff;--ok:#14804a;--err:#c0392b;--warn:#b26a00;--sh:0 4px 14px rgba(27,58,140,.08);--scrim:rgba(0,0,0,.25);color-scheme:light}
-/* Scuro: neutri nero/antracite, il blu del logo solo come accento. */
+/* Dark: neutral black/anthracite, the logo blue only as an accent. */
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#18181b;--fg:#ececee;--mu:#9b9ba3;--bd:#34343a;--field:#1f1f23;--card:#232327;--line:#2c2c31;--ac:#4f86ff;--acs:#2e2e35;--ok:#4ade80;--err:#f87171;--warn:#fbbf24;--sh:0 4px 14px rgba(0,0,0,.35);--scrim:rgba(0,0,0,.55);color-scheme:dark}}
 :root[data-theme="dark"]{--bg:#18181b;--fg:#ececee;--mu:#9b9ba3;--bd:#34343a;--field:#1f1f23;--card:#232327;--line:#2c2c31;--ac:#4f86ff;--acs:#2e2e35;--ok:#4ade80;--err:#f87171;--warn:#fbbf24;--sh:0 4px 14px rgba(0,0,0,.35);--scrim:rgba(0,0,0,.55);color-scheme:dark}
 *{box-sizing:border-box}
@@ -44,18 +44,18 @@ textarea.field{resize:vertical;min-height:38px}
 .menu button{display:block;width:100%;text-align:left;padding:6px 10px;border-radius:6px}
 .menu button:hover{background:var(--acs)}
 
-/* Barra del titolo (la finestra non ha quella di Windows) */
+/* Title bar (the window has no Windows title bar) */
 .titlebar{position:sticky;top:0;z-index:8;height:40px;display:flex;align-items:center;gap:8px;padding-left:14px;background:var(--bg);border-bottom:1px solid var(--line);user-select:none}
 .win-controls{display:flex;align-self:stretch;margin-left:4px}
 .win-controls button{width:46px;display:grid;place-items:center;color:var(--fg)}
 .win-controls button:hover{background:var(--line)}
 .win-controls button.close:hover{background:#e81123;color:#fff}
 .overlay{top:40px}
-/* Selettore a segmenti */
+/* Segmented control */
 .segmented{display:flex;background:var(--field);border:1px solid var(--bd);border-radius:10px;padding:3px;gap:3px}
 .segmented button{flex:1;padding:6px 0;border-radius:7px;color:var(--mu)}
 .segmented button.on{background:var(--acs);color:var(--ac);font-weight:600}
-/* Layout a pannelli: barra del titolo (40px), barra laterale + area centrale, striscia della coda (36px) */
+/* Panel layout: title bar (40px), sidebar + main area, queue strip (36px) */
 body{overflow:hidden}
 .layout{display:flex;height:calc(100vh - 76px)}
 .sidebar{flex:none;overflow-y:auto;padding:8px;display:flex;flex-direction:column;gap:2px}
@@ -78,29 +78,29 @@ mark{background:none;color:#e8a33d;font-weight:600}
 .strip:hover{background:var(--card)}
 .modal.wide{width:min(520px,94%)}
 .menu button:disabled{opacity:.4}
-/* Bordo trascinabile tra barra laterale e area centrale */
+/* Draggable edge between sidebar and main area */
 .resizer{width:7px;margin:0 -3px;flex:none;cursor:col-resize;position:relative;z-index:3}
 .resizer::after{content:"";position:absolute;top:0;bottom:0;left:3px;width:1px;background:var(--line)}
 .resizer:hover::after,body.resizing .resizer::after{width:3px;left:2px;background:var(--ac)}
 body.resizing{cursor:col-resize;user-select:none}
-/* Velo durante il trascinamento di file di lista */
+/* Overlay while dragging list files */
 .drop-overlay{position:fixed;inset:40px 0 0 0;z-index:20;background:var(--scrim);display:grid;place-items:center;pointer-events:none}
 .drop-overlay>div{border:2px dashed var(--ac);border-radius:16px;padding:28px 40px;background:var(--card);color:var(--ac);font-size:15px;font-weight:600}
-/* Risultati: nome a sinistra; sigla e dimensione come colonne allineate a destra */
+/* Results: name on the left; tag and size as right-aligned columns */
 .results .size{width:64px;text-align:right;flex:none}
 .sort{padding:4px 8px;font-size:12px;border-radius:8px}
-/* Selezione multipla e menu contestuale delle sorgenti */
+/* Source multi-select and context menu */
 .side-item.picked{background:var(--acs)}
 .ctx-backdrop{position:fixed;inset:0;z-index:30}
 .ctx-menu{position:fixed;right:auto;width:max-content;max-width:320px;min-width:220px;max-height:min(70vh,520px);overflow-y:auto}
 .menu-head{font-size:10.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--mu);padding:8px 10px 2px}
-/* Albero delle raccolte: sotto-raccolte e loro sorgenti rientrate */
+/* Collection tree: indented subcollections and their sources */
 .side-item.child{padding-left:22px}
 .side-item.sub.deep{padding-left:46px}
-/* Testi non selezionabili (è un'app, non una pagina); restano selezionabili i campi di testo */
+/* Non-selectable text (it's an app, not a page); text fields stay selectable */
 body{user-select:none;-webkit-user-select:none}
 input,textarea,select{user-select:text;-webkit-user-select:text}
-/* Coda riordinabile */
+/* Reorderable queue */
 .grab{cursor:grab;color:var(--mu);padding:0 4px;letter-spacing:-2px;flex:none}
 .grab:hover{color:var(--fg)}
 body.dragging-row,body.dragging-row *{cursor:grabbing !important}

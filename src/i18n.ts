@@ -1,6 +1,6 @@
 import { createContext, useContext } from "react";
 
-/** Lingua effettiva dell'interfaccia. L'impostazione "system" si risolve con la lingua del sistema. */
+/** Effective UI language. The "system" setting resolves to the system language. */
 export type Lang = "it" | "en";
 
 export function resolveLang(setting: string): Lang {
@@ -8,16 +8,16 @@ export function resolveLang(setting: string): Lang {
   return navigator.language.toLowerCase().startsWith("it") ? "it" : "en";
 }
 
-/** Traduzioni inglesi; la chiave è il testo italiano usato nel codice. `{x}` è un segnaposto. */
+/** English translations; the key is the Italian text used in the code. `{x}` is a placeholder. */
 export const EN: Record<string, string> = {
-  // Barra del titolo
+  // Title bar
   "Accedi": "Log in",
   "Esci": "Log out",
   "Impostazioni": "Settings",
   "Riduci a icona": "Minimize",
   "Ingrandisci": "Maximize",
   "Chiudi": "Close",
-  // Barra laterale
+  // Sidebar
   "Non salvate": "Unsaved",
   "Salva in una raccolta": "Save to a collection",
   "Tutte le sorgenti": "All sources",
@@ -41,7 +41,7 @@ export const EN: Record<string, string> = {
   "Coda": "Queue",
   "Aggiornamento non riuscito per {list}": "Refresh failed for {list}",
   "Raccolta esportata in {path}": "Collection exported to {path}",
-  // Ricerca
+  // Search
   "Cerca nei file… oppure incolla un link archive.org": "Search files… or paste an archive.org link",
   "Tutte le sorgenti · {n} sorgenti": "All sources · {n} sources",
   "{name} · {n} sorgenti": "{name} · {n} sources",
@@ -72,7 +72,7 @@ export const EN: Record<string, string> = {
   "in coda": "queued",
   "Già presente nella cartella di destinazione": "Already in the destination folder",
   "Già nella coda": "Already in the queue",
-  // Aggiunta e importazione
+  // Adding and importing
   "Importa raccolta": "Import collection",
   "Un link archive.org o un identificatore per riga": "One archive.org link or identifier per line",
   "{n} riga non riconosciuta nel file, ignorata": "{n} unrecognized line in the file, skipped",
@@ -91,7 +91,7 @@ export const EN: Record<string, string> = {
   "Rinomina raccolta": "Rename collection",
   "Annulla": "Cancel",
   "Crea e salva": "Create and save",
-  // Coda
+  // Queue
   "{n} in corso": "{n} downloading",
   "Coda: {n} file": "Queue: {n} files",
   "Coda vuota": "Queue empty",
@@ -113,7 +113,7 @@ export const EN: Record<string, string> = {
   "Apri cartella": "Open folder",
   "Rimuovi": "Remove",
   "Trascina per riordinare": "Drag to reorder",
-  // Impostazioni
+  // Settings
   "Tema": "Theme",
   "Automatico": "Automatic",
   "Chiaro": "Light",
@@ -148,7 +148,7 @@ export const LangContext = createContext<Lang>("it");
 
 export type T = (it: string, vars?: Record<string, string | number>) => string;
 
-/** Funzione di traduzione e locale per i numeri/le date nella lingua corrente. */
+/** Translation function and number/date locale for the current language. */
 export function useT(): { t: T; locale: string } {
   const lang = useContext(LangContext);
   return { t: (it, vars) => translate(lang, it, vars), locale: lang === "en" ? "en-US" : "it-IT" };

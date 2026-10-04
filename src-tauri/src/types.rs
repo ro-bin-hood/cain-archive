@@ -8,9 +8,9 @@ pub struct Settings {
     pub workers: u32,
     pub default_originals: bool,
     pub default_exts: String,
-    /// "system" (segue Windows), "light" o "dark".
+    /// "system" (follows Windows), "light" or "dark".
     pub theme: String,
-    /// "system" (lingua di Windows), "it" o "en".
+    /// "system" (Windows language), "it" or "en".
     pub language: String,
 }
 

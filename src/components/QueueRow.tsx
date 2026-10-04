@@ -20,7 +20,7 @@ function statusText(t: T, j: Job, p: JobProgress | undefined, left: number): { t
 
 function Row({ job, live, onGrab }: { job: Job; live?: JobProgress; onGrab: (e: MouseEvent, id: number) => void }) {
   const { t } = useT();
-  // Conto alla rovescia del nuovo tentativo, che riparte a ogni nuovo stato Retrying.
+  // Countdown to the next attempt, restarting on every new Retrying state.
   const retryKey = job.status.kind === "Retrying" ? `${job.status.attempt}:${job.status.wait_s}` : "";
   const [left, setLeft] = useState(0);
   useEffect(() => {
@@ -53,7 +53,7 @@ function Row({ job, live, onGrab }: { job: Job; live?: JobProgress; onGrab: (e: 
   );
 }
 
-/** Con migliaia di file in coda, ridisegna solo le righe che sono cambiate davvero. */
+/** With thousands of queued files, only rows that really changed are redrawn. */
 export const QueueRow = memo(
   Row,
   (a, b) => a.live === b.live && a.onGrab === b.onGrab && JSON.stringify(a.job) === JSON.stringify(b.job),

@@ -153,7 +153,7 @@ async fn colliding_destinations_get_distinct_files() {
     let (base, _) = common::start().await;
     let d = tempfile::tempdir().unwrap();
     let q = queue(&base, d.path(), None);
-    // Su NTFS Track01/track01 sono lo stesso file; a?/a* diventano entrambi a_.txt.
+    // On NTFS Track01/track01 are the same file; a?/a* both become a_.txt.
     q.enqueue(vec![nf("ok", "Track01.mp3"), nf("ok", "track01.mp3"), nf("ok", "a?.txt"), nf("ok", "a*.txt")]);
     let js = q.jobs();
     let dests: std::collections::HashSet<String> = js.iter().map(|j| j.dest.to_string_lossy().to_lowercase()).collect();
@@ -173,8 +173,8 @@ impl Sink for ChangeSink {
     fn alert(&self, _: &str) {}
 }
 
-/// Ogni cambio di stato riscrive queue.json e ridisegna la lista: con migliaia di file deve
-/// essere raggruppato, e l'ultimo stato emesso deve essere quello finale (mai uno vecchio dopo).
+/// Every state change rewrites queue.json and redraws the list: with thousands of files it must
+/// be batched, and the last emitted state must be the final one (never an old one after).
 #[tokio::test]
 async fn changes_are_batched_and_last_one_is_final() {
     let (base, _) = common::start().await;
@@ -195,7 +195,7 @@ async fn changes_are_batched_and_last_one_is_final() {
     assert!(!running && jobs.len() == 60 && jobs.iter().all(|j| j.status == JobStatus::Done));
 }
 
-/// Stop e subito Avvia, prima che i download si siano davvero fermati: devono ripartire.
+/// Stop then Start right away, before downloads have really stopped: they must restart.
 #[tokio::test]
 async fn stop_then_immediate_start_resumes() {
     let (base, _) = common::start().await;

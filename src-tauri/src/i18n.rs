@@ -1,5 +1,5 @@
-//! Messaggi del motore in italiano o inglese. La lingua la decide l'interfaccia (che risolve
-//! "Automatico" con la lingua di sistema) e la comunica con il comando `set_ui_language`.
+//! Engine messages in Italian or English. The UI decides the language (resolving
+//! "Automatic" to the system language) and sends it with the `set_ui_language` command.
 
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -17,7 +17,7 @@ pub fn pick<'a>(english: bool, it: &'a str, en: &'a str) -> &'a str {
     if english { en } else { it }
 }
 
-/// Il testo nella lingua attiva.
+/// The text in the active language.
 pub fn m<'a>(it: &'a str, en: &'a str) -> &'a str {
     pick(ENGLISH.load(Ordering::Relaxed), it, en)
 }

@@ -1,4 +1,4 @@
-// Controlla che ogni testo passato a t("…") in src/ abbia la traduzione inglese in src/i18n.ts.
+// Checks that every text passed to t("…") in src/ has an English translation in src/i18n.ts.
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 
@@ -22,11 +22,11 @@ for (const f of files) {
     if (!keys.has(k)) missing.add(`${f}: ${k}`);
   }
 }
-// Etichette tradotte passando una variabile (temi, "Automatico" delle lingue).
+// Labels translated through a variable (themes, "Automatico" in the language list).
 for (const k of ["Automatico", "Chiaro", "Scuro"]) if (!keys.has(k)) missing.add(`SettingsPanel: ${k}`);
 
 if (missing.size) {
   console.error("Traduzioni mancanti:\n" + [...missing].join("\n"));
   process.exit(1);
 }
-console.log(`i18n ok: ${keys.size} testi tradotti`);
+console.log(`i18n ok: ${keys.size} translated texts`);

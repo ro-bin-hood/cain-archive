@@ -2,7 +2,7 @@ import { api, type Language, type Settings, type Theme } from "../api";
 import { useT } from "../i18n";
 
 const THEMES: [Theme, string][] = [["system", "Automatico"], ["light", "Chiaro"], ["dark", "Scuro"]];
-// I nomi delle lingue restano nella loro lingua, così si riconoscono sempre.
+// Language names stay in their own language, so they are always recognizable.
 const LANGUAGES: [Language, string][] = [["system", "Automatico"], ["it", "Italiano"], ["en", "English"]];
 
 type Props = { settings: Settings; onChange: (s: Settings) => void; onClose: () => void };

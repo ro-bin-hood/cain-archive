@@ -32,7 +32,7 @@ pub fn save_settings(dir: &Path, s: &Settings) -> io::Result<()> {
     write_atomic(&dir.join("settings.json"), &serde_json::to_vec_pretty(s)?)
 }
 
-/// I job che erano in corso alla chiusura tornano "In pausa": riprenderanno dal .part.
+/// Jobs that were running at shutdown come back Paused: they will resume from the .part.
 pub fn load_queue(dir: &Path) -> Vec<Job> {
     let mut jobs: Vec<Job> = read_json(&dir.join("queue.json"));
     for j in &mut jobs {
@@ -47,9 +47,9 @@ pub fn save_queue(dir: &Path, jobs: &[Job]) -> io::Result<()> {
     write_atomic(&dir.join("queue.json"), &serde_json::to_vec_pretty(jobs)?)
 }
 
-/// La sessione (mai la password) sta in `session.bin`, cifrata con DPAPI: solo l'utente
-/// Windows corrente può decifrarla. Il Gestione credenziali non va bene qui: su alcuni
-/// sistemi rifiuta già voci da ~300 caratteri, mentre una sessione di archive.org ne ha ~700.
+/// The session (never the password) lives in `session.bin`, encrypted with DPAPI: only the current
+/// Windows user can decrypt it. Credential Manager doesn't fit here: on some systems
+/// it already rejects ~300-character entries, while an archive.org session is ~700.
 #[cfg(windows)]
 mod secret {
     use crate::i18n::m;
@@ -60,8 +60,8 @@ mod secret {
     fn dpapi(data: &[u8], protect: bool) -> Option<Vec<u8>> {
         let input = CRYPT_INTEGER_BLOB { cbData: data.len() as u32, pbData: data.as_ptr() as *mut u8 };
         let mut out = CRYPT_INTEGER_BLOB { cbData: 0, pbData: std::ptr::null_mut() };
-        // SAFETY: input punta a `data`, valido per tutta la chiamata; out viene allocato da
-        // Windows e liberato con LocalFree dopo la copia.
+        // SAFETY: input points to `data`, valid for the whole call; out is allocated by
+        // Windows and freed with LocalFree after copying.
         unsafe {
             let ok = if protect {
                 CryptProtectData(&input, std::ptr::null(), std::ptr::null(), std::ptr::null(), std::ptr::null(), 0, &mut out)
@@ -91,7 +91,7 @@ mod secret {
     }
 }
 
-/// Fuori da Windows: portachiavi di sistema (Keychain, keyutils).
+/// Outside Windows: the system keyring (Keychain, keyutils).
 #[cfg(not(windows))]
 mod secret {
     use crate::i18n::m;
@@ -182,8 +182,8 @@ mod tests {
         assert_eq!(st, vec![JobStatus::Paused, JobStatus::Paused, JobStatus::Queued, JobStatus::Done, JobStatus::Failed { reason: "x".into() }]);
     }
 
-    /// Una sessione vera di archive.org è ~700 caratteri: deve salvarsi, tornare identica,
-    /// non comparire in chiaro su disco e sparire con il logout.
+    /// A real archive.org session is ~700 characters: it must be saved, read back identical,
+    /// never appear in plain text on disk, and disappear on logout.
     #[test]
     fn long_session_roundtrips_encrypted() {
         let d = tempfile::tempdir().unwrap();

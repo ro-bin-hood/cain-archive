@@ -3,7 +3,7 @@ import type { Hit } from "../api";
 import { human } from "../util";
 import { useT } from "../i18n";
 
-/** Il nome con le parole cercate evidenziate (senza distinguere maiuscole e minuscole). */
+/** The name with the searched words highlighted (case-insensitive). */
 function highlight(name: string, words: string[]): ReactNode {
   if (!words.length) return name;
   const lower = name.toLowerCase();

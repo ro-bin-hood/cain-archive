@@ -26,8 +26,8 @@ pub struct Snapshot {
     pub eta_s: Option<u64>,
 }
 
-/// Byte fatti e totali del lavoro in corso: completati, attivi e in coda. I job in pausa o
-/// falliti non contano, altrimenti tempo stimato e percentuale risultano falsati.
+/// Done and total bytes of the current work: completed, active and queued. Paused or
+/// failed jobs don't count, otherwise ETA and percentage are skewed.
 fn totals(jobs: &[Job], live_done: u64) -> (u64, u64) {
     let counted = |j: &&Job| !matches!(j.status, JobStatus::Paused | JobStatus::Failed { .. });
     let total = jobs.iter().filter(counted).map(|j| j.size).sum();
@@ -55,15 +55,15 @@ struct Inner {
     running: bool,
     active: HashMap<u64, CancellationToken>,
     live: HashMap<u64, Live>,
-    /// Job fermati (token annullato) ma riavviati prima che il task se ne accorgesse:
-    /// quando il task termina tornano in coda invece che in pausa.
+    /// Jobs stopped (token cancelled) but restarted before their task noticed:
+    /// when the task ends they go back to the queue instead of being paused.
     restart: HashSet<u64>,
     dirty: bool,
     changed: bool,
 }
 
-/// Nomi diversi possono finire sullo stesso file (NTFS ignora le maiuscole, e `a?`/`a*` diventano
-/// entrambi `a_`): in quel caso il nuovo file diventa `nome (2).ext`, `nome (3).ext`, …
+/// Different names can map to the same file (NTFS ignores case, and `a?`/`a*` both become
+/// `a_`): in that case the new file becomes `name (2).ext`, `name (3).ext`, …
 fn unique_dest(dest: PathBuf, jobs: &[Job]) -> PathBuf {
     let key = |p: &Path| p.to_string_lossy().to_lowercase();
     let taken = |p: &Path| jobs.iter().any(|j| key(&j.dest) == key(p));
@@ -111,14 +111,14 @@ impl Queue {
     pub fn jobs(&self) -> Vec<Job> { self.inner.lock().unwrap().jobs.clone() }
     pub fn running(&self) -> bool { self.inner.lock().unwrap().running }
 
-    /// Segna che la coda è cambiata: il ticker salva ed emette lo stato al massimo ogni 250 ms,
-    /// così migliaia di file non riscrivono queue.json e la lista a ogni singolo cambio.
+    /// Marks the queue as changed: the ticker saves and emits the state at most every 250 ms,
+    /// so thousands of files don't rewrite queue.json and the list on every single change.
     fn notify(&self) {
         self.inner.lock().unwrap().changed = true;
     }
 
-    /// Emette lo stato corrente se è cambiato (sempre, con `force`). La copia viene presa dentro
-    /// `emit_lock`, quindi gli stati escono in ordine: mai uno vecchio dopo uno nuovo.
+    /// Emits the current state if it changed (always, with `force`). The copy is taken inside
+    /// `emit_lock`, so states go out in order: never an old one after a newer one.
     fn flush(&self, force: bool) {
         let _g = self.emit_lock.lock().unwrap();
         let (jobs, running) = {
@@ -168,7 +168,7 @@ impl Queue {
         self.pump();
     }
 
-    /// Ferma tutto: i download attivi diventano Paused (quando il task termina), quelli in coda subito.
+    /// Stops everything: active downloads become Paused (when their task ends), queued ones right away.
     pub fn stop(&self) {
         {
             let mut i = self.inner.lock().unwrap();
@@ -186,7 +186,7 @@ impl Queue {
         self.notify();
     }
 
-    /// Alla chiusura dell'app: come stop, ma marca subito Paused anche i job attivi e salva.
+    /// On app close: like stop, but also marks active jobs Paused right away and saves.
     pub fn shutdown(&self) {
         {
             let mut g = self.inner.lock().unwrap();
@@ -217,7 +217,7 @@ impl Queue {
         self.notify();
     }
 
-    /// Riprende un job in pausa o riprova uno fallito.
+    /// Resumes a paused job or retries a failed one.
     pub fn resume_job(&self, id: u64) {
         {
             let mut i = self.inner.lock().unwrap();
@@ -242,14 +242,14 @@ impl Queue {
             let pos = i.jobs.iter().position(|j| j.id == id);
             pos.map(|p| (i.jobs.remove(p), was_active))
         };
-        // Se era attivo, il .part lo cancella il task quando si accorge della rimozione.
+        // If it was active, its task deletes the .part when it notices the removal.
         if let Some((job, false)) = removed {
             let _ = std::fs::remove_file(part_path(&job.dest));
         }
         self.notify();
     }
 
-    /// Sposta un job prima di `before` (o in fondo se None). L'ordine decide quale parte per primo.
+    /// Moves a job before `before` (or to the end if None). The order decides which starts first.
     pub fn move_job(&self, id: u64, before: Option<u64>) {
         {
             let mut i = self.inner.lock().unwrap();
@@ -269,7 +269,7 @@ impl Queue {
         self.notify();
     }
 
-    /// Avvia job in coda finché ci sono worker liberi; spegne `running` quando non c'è più niente da fare.
+    /// Starts queued jobs while workers are free; turns `running` off when nothing is left to do.
     pub fn pump(&self) {
         let to_start = {
             let workers = self.settings.lock().unwrap().workers.clamp(1, 8) as usize;
@@ -384,7 +384,7 @@ impl Queue {
         self.pump();
     }
 
-    /// Emette l'avanzamento ogni 250 ms, solo quando c'è qualcosa di nuovo.
+    /// Emits progress every 250 ms, only when something changed.
     pub async fn ticker(self) {
         let mut iv = tokio::time::interval(Duration::from_millis(250));
         loop {
@@ -431,7 +431,7 @@ mod tests {
         Job { id, item_id: "i".into(), name: format!("f{id}"), size, dest: PathBuf::from(format!("C:/x/f{id}")), status }
     }
 
-    /// I file in pausa o falliti non fanno parte del lavoro in corso: non contano nel totale.
+    /// Paused or failed files are not part of the current work: they don't count in the total.
     #[test]
     fn totals_ignore_paused_and_failed_jobs() {
         let jobs = vec![
@@ -454,7 +454,7 @@ mod tests {
         q.jobs().iter().map(|j| j.id).collect()
     }
 
-    /// Trascinando un file nella coda lo si mette prima di un altro, o in fondo.
+    /// Dragging a file in the queue puts it before another one, or at the end.
     #[test]
     fn jobs_can_be_reordered() {
         let jobs = vec![job(1, 1, JobStatus::Queued), job(2, 1, JobStatus::Queued), job(3, 1, JobStatus::Done)];

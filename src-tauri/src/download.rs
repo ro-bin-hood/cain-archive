@@ -55,7 +55,7 @@ fn sanitize(part: &str) -> String {
         .map(|c| if matches!(c, '<' | '>' | ':' | '"' | '\\' | '|' | '?' | '*') || c.is_control() { '_' } else { c })
         .collect();
     let s = s.trim_end_matches(['.', ' ']);
-    // CON, AUX, COM1… sono dispositivi su Windows, anche con un'estensione (aux.h).
+    // CON, AUX, COM1… are devices on Windows, even with an extension (aux.h).
     let (stem, rest) = s.split_at(s.find('.').unwrap_or(s.len()));
     let up = stem.to_ascii_uppercase();
     let reserved = matches!(up.as_str(), "CON" | "PRN" | "AUX" | "NUL")
@@ -63,7 +63,7 @@ fn sanitize(part: &str) -> String {
     if reserved { format!("{stem}_{rest}") } else { s.to_string() }
 }
 
-/// `<out_dir>/<item>/<percorso>`, con nomi validi su Windows e senza poter uscire dalla cartella.
+/// `<out_dir>/<item>/<path>`, with Windows-safe names and no way out of the folder.
 pub fn dest_for(out_dir: &Path, item_id: &str, name: &str) -> PathBuf {
     let mut p = out_dir.join(sanitize(item_id));
     for seg in name.split('/') {
@@ -90,7 +90,7 @@ async fn finalize(part: &Path, dest: &Path, expected: Option<u64>) -> Result<u64
     let len = tokio::fs::metadata(part).await.map_err(disk)?.len();
     match expected {
         Some(e) if len < e => {
-            // Tenuto: il prossimo tentativo riprende da qui con Range.
+            // Kept: the next attempt resumes from here with Range.
             return Err(AttemptError::Retryable { msg: format!("{} ({len}/{e} byte)", m("File incompleto", "Incomplete file")), retry_after: None });
         }
         Some(e) if len > e => {
@@ -138,7 +138,7 @@ async fn attempt(req: &Request<'_>, cancel: &CancellationToken, on_progress: &(d
         _ => {}
     }
     if status != StatusCode::PARTIAL_CONTENT {
-        have = 0; // il server ha ignorato il Range: si riparte da zero
+        have = 0; // the server ignored Range: start over
     }
     let total = resp.content_length().map(|n| n + have).or(req.expected);
     let mut file = if have > 0 {
@@ -184,8 +184,8 @@ pub async fn download(
 ) -> Finish {
     let part = part_path(req.dest);
     let part_len = || std::fs::metadata(&part).map(|m| m.len()).unwrap_or(0);
-    // Fallimenti consecutivi senza progressi: una caduta che ha comunque scaricato dei byte
-    // riparte dal primo tentativo, così un file grande non fallisce per tre interruzioni in un'ora.
+    // Consecutive failures without progress: a drop that still downloaded some bytes
+    // starts again from the first attempt, so a large file doesn't fail after three drops in an hour.
     let mut failures = 0;
     loop {
         let before = part_len();

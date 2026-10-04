@@ -19,13 +19,13 @@ export function duration(s: number): string {
   return `~${(s / 3600).toFixed(1)} h`;
 }
 
-/** Gli URL archive.org contenuti nel testo, nell'ordine in cui compaiono. */
+/** archive.org URLs found in the text, in order of appearance. */
 export function extractLinks(text: string): string[] {
-  // La punteggiatura finale ("…/details/foo." in una frase) non fa parte del link.
+  // Trailing punctuation ("…/details/foo." in a sentence) is not part of the link.
   return (text.match(/https?:\/\/(?:www\.)?archive\.org\/\S+/g) ?? []).map((l) => l.replace(/[.,;:!?)\]}>"']+$/, ""));
 }
 
-/** Data breve nella lingua dell'interfaccia; "" se manca (il chiamante mostra "mai"). */
+/** Short date in the UI language; "" if missing (the caller shows "never"). */
 export function formatDate(unix: number, locale: string): string {
   return unix ? new Date(unix * 1000).toLocaleDateString(locale, { day: "numeric", month: "short", year: "numeric" }) : "";
 }
@@ -34,9 +34,9 @@ export function hitKey(h: { item_id: string; name: string }): string {
   return `${h.item_id}/${h.name}`;
 }
 
-/** Sigle per le sorgenti di un ambito. Le sorgenti della stessa "famiglia" (stessa prima parola
- *  dell'identificatore) perdono il prefisso che hanno in comune, fino a un "_" o "-":
- *  microsoft_xbox360_a_part1 → a_part1 anche accanto a nasa, che resta nasa. */
+/** Tags for the sources of a scope. Sources of the same "family" (same first word
+ *  of the identifier) lose their common prefix, up to a "_" or "-":
+ *  microsoft_xbox360_a_part1 → a_part1 even next to nasa, which stays nasa. */
 export function tagLabels(ids: string[]): Map<string, string> {
   const uniq = [...new Set(ids)];
   const family = (id: string) => id.split(/[_-]/)[0];
@@ -59,18 +59,18 @@ export function tagLabels(ids: string[]): Map<string, string> {
   return out;
 }
 
-/** Raccolte in ordine di albero: ogni raccolta seguita dalle sue sotto-raccolte. */
+/** Collections in tree order: each one followed by its subcollections. */
 export function orderedCollections(lib: LibraryState): CollectionView[] {
   return lib.collections.filter((c) => !c.parent).flatMap((c) => [c, ...lib.collections.filter((k) => k.parent === c.id)]);
 }
 
-/** Nome da mostrare fuori dall'albero: "x360 › DLC" per una sotto-raccolta. */
+/** Name shown outside the tree: "x360 › DLC" for a subcollection. */
 export function collectionLabel(lib: LibraryState, c: CollectionView): string {
   const parent = c.parent ? lib.collections.find((p) => p.id === c.parent) : undefined;
   return parent ? `${parent.name} › ${c.name}` : c.name;
 }
 
-/** Una raccolta e le sue sotto-raccolte (la ricerca su un padre le include). */
+/** A collection and its subcollections (searching a parent includes them). */
 export function withChildren(lib: LibraryState, id: string): CollectionView[] {
   return lib.collections.filter((c) => c.id === id || c.parent === id);
 }

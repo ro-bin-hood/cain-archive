@@ -3,7 +3,7 @@ import { useT } from "../i18n";
 
 type Props = { title: string; initial?: string; confirm: string; onSubmit: (name: string) => Promise<void>; onClose: () => void };
 
-/** Finestra con un solo campo di testo; gli errori di onSubmit compaiono sotto il campo. */
+/** Dialog with a single text field; onSubmit errors appear below the field. */
 export function NameDialog({ title, initial = "", confirm, onSubmit, onClose }: Props) {
   const [name, setName] = useState(initial);
   const { t } = useT();

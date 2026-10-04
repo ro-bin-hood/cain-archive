@@ -4,7 +4,7 @@ import { useT } from "../i18n";
 
 type Props = { jobs: Job[]; running: boolean; progress: Snapshot | null; onOpen: () => void };
 
-/** Striscia sempre visibile in fondo: avanzamento complessivo; un clic apre la coda. */
+/** Always-visible bottom strip: overall progress; a click opens the queue. */
 export function QueueStrip({ jobs, running, progress, onOpen }: Props) {
   const { t } = useT();
   const active = jobs.filter((j) => j.status.kind === "Downloading" || j.status.kind === "Retrying").length;

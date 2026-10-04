@@ -7,10 +7,10 @@ use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
 pub const MAX_RESULTS: usize = 500;
-/// Quante estensioni proporre come filtro (le più frequenti).
+/// How many extensions to offer as filters (the most frequent ones).
 const MAX_EXTENSIONS: usize = 15;
 
-/// Elenco dei file di una sorgente con i nomi già in minuscolo, pronto per la ricerca.
+/// File list of a source with lowercase names, ready for searching.
 #[derive(Debug, Clone)]
 pub struct SourceIndex {
     pub item_id: String,
@@ -24,7 +24,7 @@ impl SourceIndex {
     }
 }
 
-/// Se un risultato è già sul disco o già nella coda.
+/// Whether a result is already on disk or already queued.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Local {
@@ -51,7 +51,7 @@ pub struct ExtCount {
 pub struct SearchResult {
     pub results: Vec<Hit>,
     pub total: usize,
-    /// Estensioni presenti tra le corrispondenze, prima del filtro per estensione: servono come chip.
+    /// Extensions among the matches, before the extension filter: used for the chips.
     pub extensions: Vec<ExtCount>,
 }
 
@@ -67,12 +67,12 @@ pub enum Sort {
 #[derive(Debug, Clone, PartialEq, Default, Deserialize)]
 pub struct Filters {
     pub originals_only: bool,
-    /// Estensioni ammesse, in minuscolo e senza punto; vuoto = tutte.
+    /// Allowed extensions, lowercase without the dot; empty = all.
     pub exts: Vec<String>,
     pub sort: Sort,
 }
 
-/// Estensione in minuscolo dell'ultimo pezzo del percorso, "" se non c'è.
+/// Lowercase extension of the last path segment, "" if none.
 fn ext_of(lower: &str) -> &str {
     let base = lower.rsplit('/').next().unwrap_or(lower);
     match base.rfind('.') {
@@ -81,12 +81,12 @@ fn ext_of(lower: &str) -> &str {
     }
 }
 
-/// Ricerca per nome con l'ordine predefinito (vedi `search_with`).
+/// Name search with the default order (see `search_with`).
 pub fn search(sources: &[&SourceIndex], query: &str, originals_only: bool) -> SearchResult {
     search_with(sources, query, &Filters { originals_only, ..Filters::default() })
 }
 
-/// I file il cui nome contiene tutte le parole della query, filtrati e ordinati; i primi MAX_RESULTS.
+/// Files whose name contains every query word, filtered and sorted; the first MAX_RESULTS.
 pub fn search_with(sources: &[&SourceIndex], query: &str, filters: &Filters) -> SearchResult {
     let words: Vec<String> = query.split_whitespace().map(str::to_lowercase).collect();
     let exts: Vec<String> = filters.exts.iter().map(|e| e.trim().trim_start_matches('.').to_lowercase()).collect();
@@ -123,7 +123,7 @@ pub fn search_with(sources: &[&SourceIndex], query: &str, filters: &Filters) -> 
             Sort::SizeAsc => sx.cmp(&sy).then_with(|| by_name(x, y)),
         }
     };
-    // Con molte corrispondenze basta separare le prime MAX_RESULTS e ordinare solo quelle.
+    // With many matches it's enough to split off the first MAX_RESULTS and sort only those.
     if hits.len() > MAX_RESULTS {
         hits.select_nth_unstable_by(MAX_RESULTS, order);
         hits.truncate(MAX_RESULTS);
@@ -142,8 +142,8 @@ pub fn search_with(sources: &[&SourceIndex], query: &str, filters: &Filters) -> 
     SearchResult { results, total, extensions }
 }
 
-/// Segna i risultati già in coda (anche in pausa) o già scaricati: job completato, oppure file
-/// presente in `<out_dir>/<item>/<nome>` con la dimensione attesa. Un job fallito non conta.
+/// Marks results already queued (paused included) or already downloaded: a completed job, or a file
+/// in `<out_dir>/<item>/<name>` with the expected size. A failed job doesn't count.
 pub fn mark_local(hits: &mut [Hit], jobs: &[Job], out_dir: &Path) {
     let by_key: HashMap<(&str, &str), &JobStatus> = jobs.iter().map(|j| ((j.item_id.as_str(), j.name.as_str()), &j.status)).collect();
     for h in hits.iter_mut() {

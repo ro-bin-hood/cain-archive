@@ -1,8 +1,8 @@
-//! File di lista per importare ed esportare una raccolta.
+//! List files to import and export a collection.
 //!
-//! Formato: testo UTF-8, una sorgente per riga (link archive.org o identificatore). La prima riga
-//! che inizia con `#` è il nome della raccolta; le altre `#` e le righe vuote sono commenti.
-//! Sono accettate anche righe CSV "titolo,link" (separatori `,` `;` o tab): conta il campo link.
+//! Format: UTF-8 text, one source per line (archive.org link or identifier). The first line
+//! starting with `#` is the collection name; other `#` lines and blank lines are comments.
+//! CSV "title,link" rows are accepted too (`,` `;` or tab separators): the link field counts.
 
 use crate::i18n::m;
 use crate::ia;
@@ -10,7 +10,7 @@ use serde::Serialize;
 use std::collections::HashSet;
 use std::path::Path;
 
-/// Una sotto-raccolta del file, aperta da una riga separatore `# --- Nome ---`.
+/// A subcollection in the file, opened by a `# --- Name ---` separator line.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct Section {
     pub name: String,
@@ -20,11 +20,11 @@ pub struct Section {
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct ParsedList {
     pub name: Option<String>,
-    /// Righe valide prima di qualsiasi separatore, nell'ordine del file e senza doppioni.
+    /// Valid lines before any separator, in file order and without duplicates.
     pub inputs: Vec<String>,
-    /// Righe che non contengono una sorgente riconoscibile.
+    /// Lines without a recognizable source.
     pub invalid: Vec<String>,
-    /// Sotto-raccolte, nell'ordine del file.
+    /// Subcollections, in file order.
     pub sections: Vec<Section>,
 }
 
@@ -32,7 +32,7 @@ fn clean(field: &str) -> &str {
     field.trim().trim_matches('"').trim()
 }
 
-/// `# --- Nome ---` (bastano due trattini per lato) → Some("Nome").
+/// `# --- Name ---` (two dashes per side are enough) → Some("Name").
 fn separator(comment: &str) -> Option<&str> {
     let c = comment.trim();
     if !(c.starts_with("--") && c.ends_with("--")) {
@@ -47,7 +47,7 @@ pub fn parse_list(text: &str) -> ParsedList {
     let mut inputs = Vec::new();
     let mut invalid = Vec::new();
     let mut sections: Vec<Section> = Vec::new();
-    // Doppioni per sezione: la stessa sorgente può stare in sezioni diverse.
+    // Duplicates are per section: the same source may appear in different sections.
     let mut seen: Vec<HashSet<String>> = vec![HashSet::new()];
     let mut first_data = true;
     for raw in text.trim_start_matches('\u{feff}').lines() {
@@ -66,7 +66,7 @@ pub fn parse_list(text: &str) -> ParsedList {
         }
         let fields: Vec<&str> = line.split([',', ';', '\t']).map(clean).filter(|f| !f.is_empty()).collect();
         let is_first = std::mem::replace(&mut first_data, false);
-        // Un link esplicito vince; un identificatore nudo vale solo se è l'unico campo della riga.
+        // An explicit link wins; a bare identifier counts only if it is the only field on the line.
         let candidate = fields.iter().find(|f| f.starts_with("http://") || f.starts_with("https://")).copied().or(if fields.len() == 1 { Some(fields[0]) } else { None });
         match candidate.and_then(|c| ia::parse_link(c).map(|p| (c, p))) {
             Some((c, p)) => {
@@ -78,7 +78,7 @@ pub fn parse_list(text: &str) -> ParsedList {
                     target.push(c.to_string());
                 }
             }
-            // Intestazione CSV ("titolo,link"): prima riga con più campi e nessun link.
+            // CSV header ("title,link"): first line with several fields and no link.
             None if is_first && fields.len() > 1 && candidate.is_none() => {}
             None => invalid.push(line.to_string()),
         }
@@ -86,7 +86,7 @@ pub fn parse_list(text: &str) -> ParsedList {
     ParsedList { name, inputs, invalid, sections }
 }
 
-/// Legge un file di lista; se manca la riga `# nome`, il nome è quello del file.
+/// Reads a list file; without a `# name` line, the name is the file name.
 pub fn read_list_file(path: &Path) -> Result<ParsedList, String> {
     let bytes = std::fs::read(path).map_err(|e| format!("{}: {e}", m("Impossibile leggere il file", "Could not read the file")))?;
     let mut list = parse_list(&String::from_utf8_lossy(&bytes));
@@ -106,15 +106,15 @@ fn push_sources(out: &mut String, sources: &[(String, Option<String>)]) {
     }
 }
 
-/// Sorgenti di una raccolta: (identificatore, titolo).
+/// Sources of a collection: (identifier, title).
 pub type SourceList = Vec<(String, Option<String>)>;
 
-/// Una raccolta nel formato di `parse_list`: titolo (se c'è) e link di ogni sorgente.
+/// A collection in the `parse_list` format: title (if any) and link of each source.
 pub fn format_list(name: &str, sources: &[(String, Option<String>)]) -> String {
     format_list_with(name, sources, &[])
 }
 
-/// Come `format_list`, con le sotto-raccolte scritte dopo un separatore `# --- Nome ---`.
+/// Like `format_list`, with subcollections written after a `# --- Name ---` separator.
 pub fn format_list_with(name: &str, sources: &[(String, Option<String>)], subs: &[(String, SourceList)]) -> String {
     let mut out = format!("# {}\n# Cain Archive: una sorgente per riga, \"titolo, link\"; \"# --- Nome ---\" apre una sotto-raccolta\n", name.trim());
     push_sources(&mut out, sources);

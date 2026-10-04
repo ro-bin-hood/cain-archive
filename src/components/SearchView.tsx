@@ -29,13 +29,13 @@ export function SearchView({ scope, lib, jobs, query, onQuery, defaultOriginals,
 
   const words = useMemo(() => query.toLowerCase().split(/\s+/).filter(Boolean), [query]);
 
-  // La selezione resta attraverso ricerche e ambiti diversi, così si compone da più ricerche;
-  // i file selezionati che ora non si vedono sono contati a parte. I filtri per estensione
-  // dipendono dall'ambito, quindi ripartono da zero quando lo si cambia.
+  // The selection persists across searches and scopes, so it can be built from several searches;
+  // selected files not shown now are counted separately. Extension filters
+  // depend on the scope, so they reset when the scope changes.
   useEffect(() => setExts([]), [scope]);
 
-  // Ricerca 150 ms dopo l'ultima modifica; si ripete quando cambiano la libreria (sorgenti
-  // aggiornate) o la coda (per lo stato "in coda" / "scaricato" dei risultati).
+  // Search 150 ms after the last change; it runs again when the library changes (refreshed
+  // sources) or the queue changes (for the "queued" / "downloaded" state of results).
   useEffect(() => {
     let alive = true;
     setPending(true);
@@ -58,7 +58,7 @@ export function SearchView({ scope, lib, jobs, query, onQuery, defaultOriginals,
     return n;
   }), []);
 
-  // I link si aprono solo incollandoli o premendo Invio: mentre li si scrive a mano sono incompleti.
+  // Links open only on paste or Enter: while typed by hand they are incomplete.
   const openLinksIn = (text: string) => {
     const links = extractLinks(text);
     if (!links.length) return false;
@@ -80,9 +80,9 @@ export function SearchView({ scope, lib, jobs, query, onQuery, defaultOriginals,
     api.enqueue(files).then(() => setSelected(new Map())).catch((e) => onError(String(e)));
   };
 
-  // Intestazione: di cosa si sta parlando.
+  // Header: what we are looking at.
   const collection = scope.kind === "collection" ? lib.collections.find((c) => c.id === scope.id) : undefined;
-  // Una raccolta padre cerca anche nelle sue sotto-raccolte.
+  // A parent collection also searches its subcollections.
   const collSources = collection ? withChildren(lib, collection.id).flatMap((c) => c.sources) : [];
   const sourceId = scope.kind === "source" ? scope.item_id : null;
   const source = sourceId
@@ -113,19 +113,19 @@ export function SearchView({ scope, lib, jobs, query, onQuery, defaultOriginals,
   else if (result && result.total === 0 && (words.length || exts.length)) empty = t("Nessun file corrisponde alla ricerca");
 
   const shown = result?.results ?? [];
-  // Sigle calcolate sulle sorgenti dell'ambito (non sui risultati), così non cambiano mentre si scrive.
+  // Tags are computed from the scope's sources (not the results), so they don't change while typing.
   const scopeIds =
     scope.kind === "collection" ? collSources.filter((s) => s.included).map((s) => s.item_id)
     : scope.kind === "source" ? [scope.item_id]
     : scope.kind === "unsaved" ? lib.unsaved.map((m) => m.item_id)
     : lib.collections.flatMap((c) => c.sources.map((s) => s.item_id));
   const tags = tagLabels([...scopeIds, ...shown.map((h) => h.item_id)]);
-  // Chip: le estensioni presenti, più quelle attive anche se ora non ne compaiono.
+  // Chips: the extensions present, plus active ones even if none show up now.
   const extChips = [...(result?.extensions ?? []).map((e) => ({ ext: e.ext, count: e.count as number | null }))];
   for (const e of exts) if (!extChips.some((c) => c.ext === e)) extChips.push({ ext: e, count: null });
   const shownKeys = new Set(shown.map(hitKey));
   const elsewhere = [...selected.keys()].filter((k) => !shownKeys.has(k)).length;
-  // "Tutti" salta i file già scaricati o già in coda.
+  // "All" skips files already downloaded or queued.
   const selectable = shown.filter((h) => !h.local);
 
   return (

@@ -1,19 +1,21 @@
-# Claude (Claude Code, superpowers: piani, spec, screenshot di lavoro)
+# Local AI assistant working files (plans, specs, screenshots)
 .claude/
 CLAUDE.md
 CLAUDE_*
 .superpowers/
 docs/superpowers/
 
-# App Tauri
+# Tauri app
 node_modules/
 dist/
 dist-ssr/
 *.local
 src-tauri/target/
 src-tauri/gen/
+# Local copy of the executable and installer
+release/
 
-# Log ed editor
+# Logs and editors
 *.log
 .vscode/*
 !.vscode/extensions.json

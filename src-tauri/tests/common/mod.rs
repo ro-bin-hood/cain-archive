@@ -11,7 +11,7 @@ use futures_util::StreamExt;
 use serde_json::json;
 use std::{collections::HashMap, sync::{Arc, Mutex}, time::Duration};
 
-/// Contenuto deterministico di un file finto.
+/// Deterministic content of a fake file.
 pub fn content(item: &str, name: &str) -> Vec<u8> {
     format!("{item}/{name}|").repeat(200).into_bytes()
 }
@@ -63,7 +63,7 @@ async fn download(State(s): State<Srv>, Path((item, name)): Path<(String, String
         "drop" if hit == 1 => {
             let len = body.len();
             let half = body[..len / 2].to_vec();
-            // La pausa fa arrivare davvero la prima metà al client prima che la connessione cada.
+            // The pause makes the first half actually reach the client before the connection drops.
             let stream = futures_util::stream::iter(vec![Ok::<_, std::io::Error>(half), Err(std::io::Error::other("drop"))])
                 .then(|r| async move {
                     if r.is_err() {

@@ -4,7 +4,7 @@ import { useT } from "../i18n";
 
 type Props = { lib: LibraryState; onPick: (collectionId: string) => Promise<void>; onCreate: (name: string) => Promise<void>; onClose: () => void };
 
-/** Sceglie la raccolta in cui salvare una sorgente Non salvata, o ne crea una nuova. */
+/** Picks the collection to save an unsaved source into, or creates a new one. */
 export function CollectionPicker({ lib, onPick, onCreate, onClose }: Props) {
   const [name, setName] = useState("");
   const { t } = useT();

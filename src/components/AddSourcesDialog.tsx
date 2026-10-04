@@ -8,11 +8,11 @@ type Props = { lib: LibraryState; initialCollection: string | null; prefill?: Pa
 
 const NEW = "__new__";
 
-/** Aggiunge una o più sorgenti a una raccolta, una riga alla volta, mostrando l'esito di ognuna.
- *  Con `prefill` (import da file) parte con le righe e il nome della raccolta già compilati. */
+/** Adds one or more sources to a collection, one line at a time, showing each outcome.
+ *  With `prefill` (file import) it starts with the lines and collection name filled in. */
 export function AddSourcesDialog({ lib, initialCollection, prefill, onLibrary, onClose }: Props) {
   const { t, locale } = useT();
-  // Il nome del file si confronta solo con le raccolte principali.
+  // The file name is matched against top-level collections only.
   const existing = prefill?.name ? lib.collections.find((c) => !c.parent && c.name.toLowerCase() === prefill.name!.trim().toLowerCase()) : undefined;
   const sections = prefill?.sections ?? [];
   const [text, setText] = useState(prefill ? prefill.inputs.join("\n") : "");
@@ -33,9 +33,9 @@ export function AddSourcesDialog({ lib, initialCollection, prefill, onLibrary, o
         setCid(target);
       } catch (e) { setError(String(e)); return; }
     }
-    // Righe da aggiungere: quelle del campo di testo nella raccolta scelta, poi ogni sezione del
-    // file nella sotto-raccolta con lo stesso nome (creata se manca). La chiave tiene distinta la
-    // stessa sorgente in sezioni diverse; le righe già riuscite non si ripetono.
+    // Lines to add: those in the text field go to the chosen collection, then each section of the
+    // file goes to the subcollection with the same name (created if missing). The key keeps the
+    // same source in different sections apart; lines that already succeeded are not repeated.
     const done = new Set(rows.filter((r) => r.status === "ok").map((r) => r.key));
     const jobs: { key: string; input: string; section: string | null }[] = [
       ...[...new Set(text.split(/\s+/).filter(Boolean))].map((input) => ({ key: input, input, section: null })),

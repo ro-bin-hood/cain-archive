@@ -97,8 +97,8 @@ pub fn logout(state: State<'_, AppState>) {
     *state.queue.auth.lock().unwrap() = None;
 }
 
-// I comandi della libreria girano fuori dal thread dell'interfaccia (`async`): una ricerca su
-// centinaia di migliaia di file, o un lock tenuto da un salvataggio, non bloccano la finestra.
+// Library commands run off the UI thread (`async`): searching hundreds of thousands of
+// files, or a lock held while saving, never freezes the window.
 fn lib_state(state: &State<'_, AppState>) -> LibraryState {
     state.library.lock().unwrap().state()
 }
@@ -181,7 +181,7 @@ pub fn search(state: State<'_, AppState>, scope: Scope, query: String, filters: 
     Ok(result)
 }
 
-/// Sceglie un file di lista e lo legge; il nome mancante diventa il nome del file.
+/// Picks a list file and reads it; a missing name becomes the file name.
 #[tauri::command]
 pub async fn pick_import_file(app: AppHandle) -> Result<Option<ParsedList>, String> {
     let Some(file) = app.dialog().file().add_filter("Lista di sorgenti", &["txt", "csv"]).blocking_pick_file() else { return Ok(None) };
@@ -189,13 +189,13 @@ pub async fn pick_import_file(app: AppHandle) -> Result<Option<ParsedList>, Stri
     import::read_list_file(&path).map(Some)
 }
 
-/// Legge un file di lista trascinato sulla finestra.
+/// Reads a list file dropped on the window.
 #[tauri::command(async)]
 pub fn read_import_file(path: String) -> Result<ParsedList, String> {
     import::read_list_file(std::path::Path::new(&path))
 }
 
-/// Salva una raccolta come file di lista; restituisce il percorso scelto (None se annullato).
+/// Saves a collection as a list file; returns the chosen path (None if cancelled).
 #[tauri::command]
 pub async fn export_collection(app: AppHandle, state: State<'_, AppState>, id: String) -> Result<Option<String>, String> {
     let (name, sources, subs) = state.library.lock().unwrap().export_tree(&id)?;
@@ -206,7 +206,7 @@ pub async fn export_collection(app: AppHandle, state: State<'_, AppState>, id: S
     Ok(Some(path.to_string_lossy().into_owned()))
 }
 
-/// La lingua effettiva ("it" o "en") decisa dall'interfaccia, per i messaggi del motore.
+/// The effective language ("it" or "en") chosen by the UI, used for engine messages.
 #[tauri::command]
 pub fn set_ui_language(lang: String) {
     crate::i18n::set_language(&lang);

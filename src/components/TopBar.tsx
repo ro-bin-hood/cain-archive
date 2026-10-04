@@ -7,8 +7,8 @@ type Props = { user: string | null; onLogin: () => void; onLogout: () => void; o
 
 const win = getCurrentWindow();
 
-/** Barra del titolo dell'app: la finestra non ha la barra di Windows. Le zone vuote trascinano
- *  la finestra (doppio clic = ingrandisci), i pulsanti a destra sostituiscono quelli di sistema. */
+/** The app's title bar: the window has no Windows title bar. Empty areas drag
+ *  the window (double-click = maximize), the buttons on the right replace the system ones. */
 export function TopBar({ user, onLogin, onLogout, onSettings }: Props) {
   const [menu, setMenu] = useState(false);
   const { t } = useT();

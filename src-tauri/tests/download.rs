@@ -94,7 +94,7 @@ async fn resumes_after_connection_drop() {
     assert_eq!(srv.ranges.lock().unwrap().len(), 1, "il secondo tentativo deve riprendere con Range");
 }
 
-/// Un file grande che cade più di 3 volte ma avanza ogni volta non deve fallire.
+/// A large file that drops more than 3 times but makes progress each time must not fail.
 #[tokio::test]
 async fn attempts_reset_when_a_drop_still_made_progress() {
     let (base, _) = common::start().await;
