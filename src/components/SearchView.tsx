@@ -14,11 +14,11 @@ type Props = {
   onLibrary: (s: LibraryState) => void;
   onOpenLinks: (links: string[]) => void;
   onSaveUnsaved: (itemId: string) => void;
-  onError: (msg: string) => void;
+  onError: (err: unknown) => void;
 };
 
 export function SearchView({ scope, lib, jobs, query, onQuery, defaultOriginals, onLibrary, onOpenLinks, onSaveUnsaved, onError }: Props) {
-  const { t, locale } = useT();
+  const { t, te, locale } = useT();
   const [originals, setOriginals] = useState(defaultOriginals);
   const [exts, setExts] = useState<string[]>([]);
   const [sort, setSort] = useState<Sort>("name");
@@ -46,7 +46,7 @@ export function SearchView({ scope, lib, jobs, query, onQuery, defaultOriginals,
           setResult(r);
           setPending(false);
         })
-        .catch((e) => alive && onError(String(e)));
+        .catch((e) => alive && onError(e));
     }, 150);
     return () => { alive = false; clearTimeout(t); };
   }, [scope, query, originals, exts, sort, lib, jobs, onError]);
@@ -77,7 +77,7 @@ export function SearchView({ scope, lib, jobs, query, onQuery, defaultOriginals,
 
   const enqueue = () => {
     const files = [...selected.values()].map((h) => ({ item_id: h.item_id, name: h.name, size: h.size }));
-    api.enqueue(files).then(() => setSelected(new Map())).catch((e) => onError(String(e)));
+    api.enqueue(files).then(() => setSelected(new Map())).catch(onError);
   };
 
   // Header: what we are looking at.
@@ -91,26 +91,26 @@ export function SearchView({ scope, lib, jobs, query, onQuery, defaultOriginals,
   const unsaved = !!sourceId && lib.unsaved.some((m) => m.item_id === sourceId);
   const allCount = new Set(lib.collections.flatMap((c) => c.sources.map((s) => s.item_id))).size;
   const title =
-    scope.kind === "all" ? t("Tutte le sorgenti · {n} sorgenti", { n: allCount })
-    : scope.kind === "unsaved" ? t("Non salvate")
-    : collection ? t("{name} · {n} sorgenti", { name: collectionLabel(lib, collection), n: new Set(collSources.filter((s) => s.included).map((s) => s.item_id)).size })
+    scope.kind === "all" ? t("search.titleAll", { n: allCount })
+    : scope.kind === "unsaved" ? t("sidebar.unsaved")
+    : collection ? t("search.titleCollection", { name: collectionLabel(lib, collection), n: new Set(collSources.filter((s) => s.included).map((s) => s.item_id)).size })
     : source ? source.title || source.item_id : "";
 
   const refresh = async () => {
     if (!sourceId) return;
     setRefreshing(true);
-    await api.refreshSource(sourceId).catch((e) => onError(String(e)));
+    await api.refreshSource(sourceId).catch(onError);
     setRefreshing(false);
     onLibrary(await api.libraryState());
   };
 
   let empty: string | null = null;
-  if (!lib.collections.length && !lib.unsaved.length) empty = t("Crea una raccolta o incolla un link archive.org per iniziare");
-  else if (collection && !collSources.length) empty = t("Aggiungi sorgenti con ⋯ → Aggiungi sorgenti");
-  else if (collection && !collSources.some((s) => s.included)) empty = t("Tutte le sorgenti di questa raccolta sono escluse dalla ricerca: spunta quelle da includere");
+  if (!lib.collections.length && !lib.unsaved.length) empty = t("search.emptyStart");
+  else if (collection && !collSources.length) empty = t("search.emptyCollection");
+  else if (collection && !collSources.some((s) => s.included)) empty = t("search.emptyAllExcluded");
   else if (scope.kind === "all" && allCount === 0)
-    empty = lib.unsaved.length ? t("Nessuna sorgente salvata: le Non salvate si cercano selezionandole a sinistra") : t("Le raccolte sono vuote: aggiungi sorgenti con ⋯ → Aggiungi sorgenti");
-  else if (result && result.total === 0 && (words.length || exts.length)) empty = t("Nessun file corrisponde alla ricerca");
+    empty = lib.unsaved.length ? t("search.emptyOnlyUnsaved") : t("search.emptyCollections");
+  else if (result && result.total === 0 && (words.length || exts.length)) empty = t("search.noMatch");
 
   const shown = result?.results ?? [];
   // Tags are computed from the scope's sources (not the results), so they don't change while typing.
@@ -130,44 +130,44 @@ export function SearchView({ scope, lib, jobs, query, onQuery, defaultOriginals,
 
   return (
     <>
-      <input className="field search" autoFocus placeholder={t("Cerca nei file… oppure incolla un link archive.org")} value={query}
+      <input className="field search" autoFocus placeholder={t("search.placeholder")} value={query}
         onChange={(e) => onQuery(e.target.value)} onPaste={onPaste} onKeyDown={onKeyDown} />
       <div className="row" style={{ flexWrap: "wrap" }}>
         <b className="name">{title}</b>
         {result && (
           <span className="muted small">
-            · {t("{n} risultati", { n: result.total.toLocaleString(locale) })}{result.total > shown.length ? ` · ${t("mostrati {n}", { n: shown.length })}` : ""}
+            · {t("search.results", { n: result.total })}{result.total > shown.length ? ` · ${t("search.showing", { n: shown.length })}` : ""}
           </span>
         )}
         <div className="grow" />
-        <button className="muted small" disabled={pending || !selectable.length} title={t("Aggiungi alla selezione i risultati non ancora scaricati né in coda")}
-          onClick={() => setSelected((s) => new Map([...s, ...selectable.map((h) => [hitKey(h), h] as const)]))}>{t("Tutti")}</button>
+        <button className="muted small" disabled={pending || !selectable.length} title={t("search.selectAllHint")}
+          onClick={() => setSelected((s) => new Map([...s, ...selectable.map((h) => [hitKey(h), h] as const)]))}>{t("search.selectAll")}</button>
         <span className="muted small">·</span>
-        <button className="muted small" onClick={() => setSelected(new Map())}>{t("Nessuno")}</button>
-        {elsewhere > 0 && <span className="muted small" title={t("File selezionati in altre ricerche, non visibili qui")}>{t("+{n} da altre ricerche", { n: elsewhere })}</span>}
-        <button className="btn small" disabled={!selected.size || pending} onClick={enqueue}>{t("Aggiungi {n} alla coda", { n: selected.size })}</button>
+        <button className="muted small" onClick={() => setSelected(new Map())}>{t("search.selectNone")}</button>
+        {elsewhere > 0 && <span className="muted small" title={t("search.elsewhereHint")}>{t("search.elsewhere", { n: elsewhere })}</span>}
+        <button className="btn small" disabled={!selected.size || pending} onClick={enqueue}>{t("search.addToQueue", { n: selected.size })}</button>
       </div>
       <div className="row" style={{ flexWrap: "wrap", gap: 6 }}>
-        <button className={`chip ${originals ? "on" : ""}`} onClick={() => setOriginals((o) => !o)}>{t("Solo originali")}</button>
+        <button className={`chip ${originals ? "on" : ""}`} onClick={() => setOriginals((o) => !o)}>{t("search.originalsOnly")}</button>
         {extChips.map(({ ext, count }) => (
           <button key={ext} className={`chip ${exts.includes(ext) ? "on" : ""}`} onClick={() => toggleExt(ext)}>
             {ext}{count != null && <span className="muted"> {count.toLocaleString(locale)}</span>}
           </button>
         ))}
         <div className="grow" />
-        <select className="field sort" value={sort} onChange={(e) => setSort(e.target.value as Sort)} title={t("Ordina i risultati")}>
-          <option value="name">{t("Nome")}</option>
-          <option value="size_desc">{t("Più grandi prima")}</option>
-          <option value="size_asc">{t("Più piccoli prima")}</option>
+        <select className="field sort" value={sort} onChange={(e) => setSort(e.target.value as Sort)} title={t("search.sortHint")}>
+          <option value="name">{t("search.sortName")}</option>
+          <option value="size_desc">{t("search.sortLargest")}</option>
+          <option value="size_asc">{t("search.sortSmallest")}</option>
         </select>
       </div>
       {source && (
         <div className="row muted small">
-          <span>{t("{n} file · {size} · aggiornata il {date}", { n: source.file_count.toLocaleString(locale), size: human(source.total_size), date: formatDate(source.updated_at, locale) || t("mai") })}</span>
-          {source.error && <span className="warn" title={source.error}>⚠ {source.error}</span>}
+          <span>{t("search.sourceInfo", { n: source.file_count, size: human(source.total_size), date: formatDate(source.updated_at, locale) || t("search.never") })}</span>
+          {source.error && <span className="warn" title={te(source.error)}>⚠ {te(source.error)}</span>}
           <div className="grow" />
-          <button className="btn small ghost" disabled={refreshing} onClick={refresh}>{refreshing ? t("Aggiornamento…") : `↻ ${t("Aggiorna")}`}</button>
-          {unsaved && <button className="btn small" onClick={() => onSaveUnsaved(source.item_id)}>★ {t("Salva")}</button>}
+          <button className="btn small ghost" disabled={refreshing} onClick={refresh}>{refreshing ? t("search.refreshing") : `↻ ${t("common.refresh")}`}</button>
+          {unsaved && <button className="btn small" onClick={() => onSaveUnsaved(source.item_id)}>★ {t("common.save")}</button>}
         </div>
       )}
       <div className="card results">

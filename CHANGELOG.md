@@ -26,7 +26,7 @@ First public release.
 - Quick open: paste an archive.org link to browse an item without saving it, then star it to keep it.
 - Readable source tags that strip the common prefix of a family of identifiers.
 - Login for items that require an archive.org account; the password is never stored and the session is encrypted for the current Windows user (DPAPI).
-- Light, dark or automatic theme; Italian or English interface and engine messages.
+- Light, dark or automatic theme; English interface, with Italian included. A language is added by dropping a JSON file into `src/locales/`; missing texts fall back to English.
 - Windows-safe file names: forbidden characters, reserved names and path traversal are handled, collisions get ` (2)`, ` (3)`…
 - Resizable sidebar.
 - New logo: vector emblem with the temple, Cain with his staff and the log.
@@ -34,6 +34,7 @@ First public release.
 ### Changed
 
 - Rewritten as a Tauri desktop app and renamed from IA Downloader to Cain Archive; the legacy Python version has been removed.
+- The engine reports errors as codes with parameters, translated by the interface: messages follow the current language, including those saved with sources and queued files.
 
 ### Security
 

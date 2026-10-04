@@ -11,7 +11,7 @@ const NEW = "__new__";
 /** Adds one or more sources to a collection, one line at a time, showing each outcome.
  *  With `prefill` (file import) it starts with the lines and collection name filled in. */
 export function AddSourcesDialog({ lib, initialCollection, prefill, onLibrary, onClose }: Props) {
-  const { t, locale } = useT();
+  const { t, te } = useT();
   // The file name is matched against top-level collections only.
   const existing = prefill?.name ? lib.collections.find((c) => !c.parent && c.name.toLowerCase() === prefill.name!.trim().toLowerCase()) : undefined;
   const sections = prefill?.sections ?? [];
@@ -31,7 +31,7 @@ export function AddSourcesDialog({ lib, initialCollection, prefill, onLibrary, o
         onLibrary(st);
         target = st.collections[st.collections.length - 1].id;
         setCid(target);
-      } catch (e) { setError(String(e)); return; }
+      } catch (e) { setError(te(e)); return; }
     }
     // Lines to add: those in the text field go to the chosen collection, then each section of the
     // file goes to the subcollection with the same name (created if missing). The key keeps the
@@ -43,7 +43,7 @@ export function AddSourcesDialog({ lib, initialCollection, prefill, onLibrary, o
     ].filter((j) => !done.has(j.key));
     if (!jobs.length) return;
     setBusy(true);
-    setRows((r) => [...r.filter((x) => x.status === "ok"), ...jobs.map((j) => ({ ...j, status: "wait" as const, msg: t("In attesa…") }))]);
+    setRows((r) => [...r.filter((x) => x.status === "ok"), ...jobs.map((j) => ({ ...j, status: "wait" as const, msg: t("add.waiting") }))]);
     let state = await api.libraryState();
     const subIds = new Map<string, string>();
     for (const j of jobs) {
@@ -56,13 +56,13 @@ export function AddSourcesDialog({ lib, initialCollection, prefill, onLibrary, o
           try {
             state = await api.createSubcollection(target, j.section);
             id = state.collections.find((c) => c.parent === target && c.name.toLowerCase() === name)?.id;
-          } catch (e) { update("err", String(e)); continue; }
+          } catch (e) { update("err", te(e)); continue; }
         }
-        if (!id) { update("err", t("Raccolta non trovata")); continue; }
+        if (!id) { update("err", te({ code: "collection_not_found" })); continue; }
         subIds.set(name, id);
         dest = id;
       }
-      await api.addSource(dest, j.input).then((m) => update("ok", t("Aggiunta · {n} file", { n: m.file_count.toLocaleString(locale) }))).catch((e) => update("err", String(e)));
+      await api.addSource(dest, j.input).then((m) => update("ok", t("add.added", { n: m.file_count }))).catch((e) => update("err", te(e)));
     }
     onLibrary(await api.libraryState());
     setBusy(false);
@@ -71,26 +71,26 @@ export function AddSourcesDialog({ lib, initialCollection, prefill, onLibrary, o
   return (
     <div className="overlay" onClick={busy ? undefined : onClose}>
       <div className="modal wide" onClick={(e) => e.stopPropagation()}>
-        <b className="title">{prefill ? t("Importa raccolta") : t("Aggiungi sorgenti")}</b>
-        <textarea className="field" rows={5} autoFocus placeholder={t("Un link archive.org o un identificatore per riga")} value={text} onChange={(e) => setText(e.target.value)} />
+        <b className="title">{prefill ? t("add.titleImport") : t("add.title")}</b>
+        <textarea className="field" rows={5} autoFocus placeholder={t("add.placeholder")} value={text} onChange={(e) => setText(e.target.value)} />
         {sections.length > 0 && (
           <span className="muted small">
-            {t("Sotto-raccolte: {list}", { list: sections.map((s) => `${s.name} (${s.inputs.length})`).join(", ") })}
+            {t("add.subcollections", { list: sections.map((s) => `${s.name} (${s.inputs.length})`).join(", ") })}
           </span>
         )}
         {prefill && prefill.invalid.length > 0 && (
           <span className="warn small" title={prefill.invalid.join("\n")}>
-            {t(prefill.invalid.length === 1 ? "{n} riga non riconosciuta nel file, ignorata" : "{n} righe non riconosciute nel file, ignorate", { n: prefill.invalid.length })}
+            {t("add.invalidLines", { n: prefill.invalid.length })}
           </span>
         )}
         <label className="stack">
-          <span className="section-title">{t("Raccolta")}</span>
+          <span className="section-title">{t("add.collection")}</span>
           <select className="field" value={cid} onChange={(e) => setCid(e.target.value)}>
             {orderedCollections(lib).map((c) => <option key={c.id} value={c.id}>{collectionLabel(lib, c)}</option>)}
-            <option value={NEW}>＋ {t("Nuova raccolta…")}</option>
+            <option value={NEW}>＋ {t("common.newCollectionEllipsis")}</option>
           </select>
         </label>
-        {cid === NEW && <input className="field" placeholder={t("Nome della nuova raccolta")} value={newName} onChange={(e) => setNewName(e.target.value)} />}
+        {cid === NEW && <input className="field" placeholder={t("add.newCollectionName")} value={newName} onChange={(e) => setNewName(e.target.value)} />}
         {rows.length > 0 && (
           <div className="card" style={{ maxHeight: 200, overflow: "auto" }}>
             {rows.map((r) => (
@@ -104,8 +104,8 @@ export function AddSourcesDialog({ lib, initialCollection, prefill, onLibrary, o
         {error && <span className="err small">{error}</span>}
         <div className="row">
           <div className="grow" />
-          <button className="btn ghost" disabled={busy} onClick={onClose}>{t("Chiudi")}</button>
-          <button className="btn" disabled={busy || (!text.trim() && !sections.length)} onClick={add}>{busy ? t("Aggiunta…") : prefill ? t("Importa") : t("Aggiungi")}</button>
+          <button className="btn ghost" disabled={busy} onClick={onClose}>{t("common.close")}</button>
+          <button className="btn" disabled={busy || (!text.trim() && !sections.length)} onClick={add}>{busy ? t("add.adding") : prefill ? t("add.import") : t("add.add")}</button>
         </div>
       </div>
     </div>

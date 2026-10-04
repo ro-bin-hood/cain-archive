@@ -1,5 +1,6 @@
 mod common;
 use cain_archive_lib::{
+    error::AppError,
     ia,
     library::{self, Library, Scope},
 };
@@ -33,10 +34,10 @@ async fn add_source_reports_errors_without_changes() {
     let l = lib(d.path());
     let c = l.lock().unwrap().create_collection("Uno").unwrap();
     let client = ia::client();
-    assert_eq!(library::add_source(&l, &client, &base, None, &c, "https://example.com/x").await.unwrap_err(), "Link non riconosciuto");
+    assert_eq!(library::add_source(&l, &client, &base, None, &c, "https://example.com/x").await.unwrap_err(), AppError::LinkNotRecognized);
     let e = library::add_source(&l, &client, &base, None, &c, "missing").await.unwrap_err();
-    assert!(e.contains("prova ad accedere"), "{e}");
-    assert_eq!(library::add_source(&l, &client, &base, None, "c99", "nasa").await.unwrap_err(), "Raccolta non trovata");
+    assert_eq!(e, AppError::ItemUnavailableLogIn);
+    assert_eq!(library::add_source(&l, &client, &base, None, "c99", "nasa").await.unwrap_err(), AppError::CollectionNotFound);
     assert!(l.lock().unwrap().state().collections[0].sources.is_empty());
 }
 
@@ -80,13 +81,13 @@ async fn refresh_failure_keeps_the_list() {
     let client = ia::client();
     library::add_source(&l, &client, &base, None, &c, "flaky").await.unwrap();
     let e = library::refresh_source(&l, &client, &base, None, "flaky").await.unwrap_err();
-    assert!(e.contains("Item vuoto"), "{e}");
+    assert_eq!(e, AppError::ItemUnavailableLogIn);
     {
         let g = l.lock().unwrap();
         assert!(g.known("flaky").unwrap().error.is_some());
         assert_eq!(g.search(&Scope::All, "", false).unwrap().total, 3);
     }
-    assert_eq!(library::refresh_source(&l, &client, &base, None, "nope").await.unwrap_err(), "Sorgente non trovata");
+    assert_eq!(library::refresh_source(&l, &client, &base, None, "nope").await.unwrap_err(), AppError::SourceNotFound);
 }
 
 #[tokio::test]

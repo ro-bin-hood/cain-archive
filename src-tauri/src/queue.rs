@@ -1,5 +1,5 @@
 use crate::download::{self, dest_for, part_path, Finish, Request};
-use crate::i18n::m;
+use crate::error::AppError;
 use crate::ia::{self, Auth};
 use crate::types::{Job, JobStatus, NewFile, Settings};
 use serde::Serialize;
@@ -38,7 +38,7 @@ fn totals(jobs: &[Job], live_done: u64) -> (u64, u64) {
 pub trait Sink: Send + Sync + 'static {
     fn changed(&self, jobs: &[Job], running: bool);
     fn progress(&self, snap: &Snapshot);
-    fn alert(&self, msg: &str);
+    fn alert(&self, err: &AppError);
 }
 
 struct Live {
@@ -75,7 +75,7 @@ fn unique_dest(dest: PathBuf, jobs: &[Job]) -> PathBuf {
     (2..)
         .map(|n| dest.with_file_name(format!("{stem} ({n}){ext}")))
         .find(|p| !taken(p))
-        .expect("intervallo infinito")
+        .expect("unbounded range")
 }
 
 #[derive(Clone)]
@@ -363,7 +363,7 @@ impl Queue {
                     i.jobs[p].status = if i.restart.remove(&id) { JobStatus::Queued } else { JobStatus::Paused };
                 }
                 (Finish::Failed(reason), Some(p)) => i.jobs[p].status = JobStatus::Failed { reason },
-                (Finish::Disk(msg), Some(p)) => {
+                (Finish::Disk(detail), Some(p)) => {
                     i.jobs[p].status = JobStatus::Paused;
                     i.running = false;
                     for t in i.active.values() {
@@ -374,12 +374,12 @@ impl Queue {
                             j.status = JobStatus::Paused;
                         }
                     }
-                    alert = Some(format!("{}: {msg}", m("Download in pausa per un problema di disco", "Downloads paused because of a disk problem")));
+                    alert = Some(AppError::DiskProblem { detail });
                 }
             }
         }
-        if let Some(m) = alert {
-            self.sink.alert(&m);
+        if let Some(err) = alert {
+            self.sink.alert(&err);
         }
         self.pump();
     }
@@ -438,7 +438,7 @@ mod tests {
             job(1, 100, JobStatus::Done),
             job(2, 1000, JobStatus::Paused),
             job(3, 50, JobStatus::Queued),
-            job(4, 10, JobStatus::Failed { reason: "x".into() }),
+            job(4, 10, JobStatus::Failed { reason: AppError::FileNotFound }),
             job(5, 200, JobStatus::Downloading),
         ];
         assert_eq!(totals(&jobs, 20), (120, 350));
@@ -447,7 +447,7 @@ mod tests {
     impl Sink for NullSink {
         fn changed(&self, _: &[Job], _: bool) {}
         fn progress(&self, _: &Snapshot) {}
-        fn alert(&self, _: &str) {}
+        fn alert(&self, _: &AppError) {}
     }
 
     fn order(q: &Queue) -> Vec<u64> {
@@ -468,7 +468,7 @@ mod tests {
         q.move_job(2, Some(2));
         q.move_job(99, Some(1));
         q.move_job(1, Some(99));
-        assert_eq!(order(&q), [2, 1, 3], "spostamenti senza senso non cambiano niente");
+        assert_eq!(order(&q), [2, 1, 3], "meaningless moves change nothing");
     }
 
 }

@@ -1,5 +1,5 @@
 use crate::ia;
-use crate::i18n::m;
+use crate::error::AppError;
 use futures_util::StreamExt;
 use reqwest::header::{HeaderMap, HeaderValue, RANGE, RETRY_AFTER};
 use reqwest::{Client, StatusCode};
@@ -14,14 +14,14 @@ pub const MAX_ATTEMPTS: u32 = 3;
 pub enum Finish {
     Done(u64),
     Cancelled,
-    Failed(String),
+    Failed(AppError),
     Disk(String),
 }
 
 #[derive(Debug, PartialEq)]
 enum AttemptError {
-    Retryable { msg: String, retry_after: Option<u64> },
-    Fatal(String),
+    Retryable { err: AppError, retry_after: Option<u64> },
+    Fatal(AppError),
     Disk(String),
     Cancelled,
 }
@@ -91,11 +91,11 @@ async fn finalize(part: &Path, dest: &Path, expected: Option<u64>) -> Result<u64
     match expected {
         Some(e) if len < e => {
             // Kept: the next attempt resumes from here with Range.
-            return Err(AttemptError::Retryable { msg: format!("{} ({len}/{e} byte)", m("File incompleto", "Incomplete file")), retry_after: None });
+            return Err(AttemptError::Retryable { err: AppError::IncompleteFile { got: len, expected: e }, retry_after: None });
         }
         Some(e) if len > e => {
             tokio::fs::remove_file(part).await.map_err(disk)?;
-            return Err(AttemptError::Retryable { msg: format!("{} ({len} ≠ {e} byte)", m("Dimensione errata", "Wrong size")), retry_after: None });
+            return Err(AttemptError::Retryable { err: AppError::WrongSize { got: len, expected: e }, retry_after: None });
         }
         _ => {}
     }
@@ -120,21 +120,20 @@ async fn attempt(req: &Request<'_>, cancel: &CancellationToken, on_progress: &(d
         headers.insert(RANGE, HeaderValue::from_str(&format!("bytes={have}-")).expect("header Range"));
     }
     let resp = tokio::select! {
-        r = ia::get(req.client, req.url, &headers) => r.map_err(|msg| AttemptError::Retryable { msg: format!("{}: {msg}", m("Errore di rete", "Network error")), retry_after: None })?,
+        r = ia::get(req.client, req.url, &headers) => r.map_err(|err| AttemptError::Retryable { err, retry_after: None })?,
         _ = cancel.cancelled() => return Err(AttemptError::Cancelled),
     };
     let status = resp.status();
     match status {
         StatusCode::RANGE_NOT_SATISFIABLE if have > 0 => return finalize(&part, req.dest, req.expected).await,
         StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN => {
-            let why = if req.authed { m("Accesso negato: item riservato", "Access denied: restricted item") } else { m("Accesso negato: serve accedere", "Access denied: log in required") };
-            return Err(AttemptError::Fatal(why.to_string()));
+            return Err(AttemptError::Fatal(if req.authed { AppError::AccessDeniedRestricted } else { AppError::AccessDeniedLogIn }));
         }
-        StatusCode::NOT_FOUND => return Err(AttemptError::Fatal(m("File non trovato", "File not found").into())),
+        StatusCode::NOT_FOUND => return Err(AttemptError::Fatal(AppError::FileNotFound)),
         s if s == StatusCode::TOO_MANY_REQUESTS || s.is_server_error() => {
-            return Err(AttemptError::Retryable { msg: format!("{} (HTTP {})", m("Server occupato", "Server busy"), s.as_u16()), retry_after: parse_retry_after(resp.headers()) });
+            return Err(AttemptError::Retryable { err: AppError::ServerBusy { status: s.as_u16() }, retry_after: parse_retry_after(resp.headers()) });
         }
-        s if !s.is_success() => return Err(AttemptError::Fatal(format!("{} {}", m("Errore HTTP", "HTTP error"), s.as_u16()))),
+        s if !s.is_success() => return Err(AttemptError::Fatal(AppError::Http { status: s.as_u16() })),
         _ => {}
     }
     if status != StatusCode::PARTIAL_CONTENT {
@@ -162,7 +161,7 @@ async fn attempt(req: &Request<'_>, cancel: &CancellationToken, on_progress: &(d
             None => break,
             Some(Err(e)) => {
                 file.flush().await.map_err(disk)?;
-                return Err(AttemptError::Retryable { msg: format!("{}: {e}", m("Connessione interrotta", "Connection dropped")), retry_after: None });
+                return Err(AttemptError::Retryable { err: AppError::ConnectionDropped { detail: e.to_string() }, retry_after: None });
             }
             Some(Ok(chunk)) => {
                 file.write_all(&chunk).await.map_err(disk)?;
@@ -192,12 +191,12 @@ pub async fn download(
         match attempt(req, cancel, on_progress).await {
             Ok(len) => return Finish::Done(len),
             Err(AttemptError::Cancelled) => return Finish::Cancelled,
-            Err(AttemptError::Fatal(m)) => return Finish::Failed(m),
-            Err(AttemptError::Disk(m)) => return Finish::Disk(m),
-            Err(AttemptError::Retryable { msg, retry_after }) => {
+            Err(AttemptError::Fatal(err)) => return Finish::Failed(err),
+            Err(AttemptError::Disk(detail)) => return Finish::Disk(detail),
+            Err(AttemptError::Retryable { err, retry_after }) => {
                 failures = if part_len() > before { 1 } else { failures + 1 };
                 if failures >= MAX_ATTEMPTS {
-                    return Finish::Failed(msg);
+                    return Finish::Failed(err);
                 }
                 let wait = retry_delay(failures, retry_after, req.retry_base_s);
                 on_retry(failures, wait);

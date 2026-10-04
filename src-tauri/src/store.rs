@@ -1,5 +1,5 @@
+use crate::error::{AppError, AppResult};
 use crate::ia::Auth;
-use crate::i18n::m;
 use crate::types::{Job, JobStatus, Settings};
 use std::{fs, io, path::Path};
 
@@ -22,14 +22,22 @@ pub fn load_settings(dir: &Path) -> Settings {
     if !matches!(s.theme.as_str(), "system" | "light" | "dark") {
         s.theme = "system".into();
     }
-    if !matches!(s.language.as_str(), "system" | "it" | "en") {
+    if s.language != "system" && !is_language_code(&s.language) {
         s.language = "system".into();
     }
     s
 }
 
-pub fn save_settings(dir: &Path, s: &Settings) -> io::Result<()> {
-    write_atomic(&dir.join("settings.json"), &serde_json::to_vec_pretty(s)?)
+pub fn save_settings(dir: &Path, s: &Settings) -> AppResult<()> {
+    let json = serde_json::to_vec_pretty(s).map_err(AppError::other)?;
+    write_atomic(&dir.join("settings.json"), &json).map_err(|e| AppError::SaveSettingsFailed { detail: e.to_string() })
+}
+
+/// A BCP 47-like code ("en", "pt-BR"): which languages exist is up to the UI.
+fn is_language_code(s: &str) -> bool {
+    let mut parts = s.split('-');
+    let base = parts.next().unwrap_or("");
+    (2..=3).contains(&base.len()) && base.chars().all(|c| c.is_ascii_lowercase()) && parts.all(|p| (2..=8).contains(&p.len()) && p.chars().all(|c| c.is_ascii_alphanumeric()))
 }
 
 /// Jobs that were running at shutdown come back Paused: they will resume from the .part.
@@ -52,7 +60,6 @@ pub fn save_queue(dir: &Path, jobs: &[Job]) -> io::Result<()> {
 /// it already rejects ~300-character entries, while an archive.org session is ~700.
 #[cfg(windows)]
 mod secret {
-    use crate::i18n::m;
     use std::path::Path;
     use windows_sys::Win32::Foundation::LocalFree;
     use windows_sys::Win32::Security::Cryptography::{CryptProtectData, CryptUnprotectData, CRYPT_INTEGER_BLOB};
@@ -82,7 +89,7 @@ mod secret {
     }
 
     pub fn save(dir: &Path, json: &str) -> Result<(), String> {
-        let enc = dpapi(json.as_bytes(), true).ok_or(m("cifratura non riuscita", "encryption failed"))?;
+        let enc = dpapi(json.as_bytes(), true).ok_or("encryption failed")?;
         super::write_atomic(&dir.join("session.bin"), &enc).map_err(|e| e.to_string())
     }
 
@@ -94,7 +101,6 @@ mod secret {
 /// Outside Windows: the system keyring (Keychain, keyutils).
 #[cfg(not(windows))]
 mod secret {
-    use crate::i18n::m;
     use std::path::Path;
     const SERVICE: &str = "com.cainarchive.app";
 
@@ -107,7 +113,7 @@ mod secret {
     }
 
     pub fn save(_dir: &Path, json: &str) -> Result<(), String> {
-        entry().ok_or(m("portachiavi non disponibile", "keyring unavailable"))?.set_password(json).map_err(|e| e.to_string())
+        entry().ok_or("keyring unavailable")?.set_password(json).map_err(|e| e.to_string())
     }
 
     pub fn clear(_dir: &Path) {
@@ -121,9 +127,9 @@ pub fn load_auth(dir: &Path) -> Option<Auth> {
     serde_json::from_str(&secret::load(dir)?).ok()
 }
 
-pub fn save_auth(dir: &Path, a: &Auth) -> Result<(), String> {
-    let json = serde_json::to_string(a).map_err(|e| e.to_string())?;
-    secret::save(dir, &json).map_err(|e| format!("{}: {e}", m("Impossibile salvare la sessione", "Could not save the session")))
+pub fn save_auth(dir: &Path, a: &Auth) -> AppResult<()> {
+    let json = serde_json::to_string(a).map_err(AppError::other)?;
+    secret::save(dir, &json).map_err(|detail| AppError::SaveSessionFailed { detail })
 }
 
 pub fn clear_auth(dir: &Path) {
@@ -163,8 +169,12 @@ mod tests {
         assert_eq!(load_settings(d.path()).theme, "system");
         std::fs::write(d.path().join("settings.json"), r#"{"language": "en"}"#).unwrap();
         assert_eq!(load_settings(d.path()).language, "en");
-        std::fs::write(d.path().join("settings.json"), r#"{"language": "klingon"}"#).unwrap();
-        assert_eq!(load_settings(d.path()).language, "system");
+        std::fs::write(d.path().join("settings.json"), r#"{"language": "pt-BR"}"#).unwrap();
+        assert_eq!(load_settings(d.path()).language, "pt-BR");
+        for bad in ["klingon", "EN", "e", "../x", ""] {
+            std::fs::write(d.path().join("settings.json"), format!(r#"{{"language": "{bad}"}}"#)).unwrap();
+            assert_eq!(load_settings(d.path()).language, "system", "{bad}");
+        }
     }
 
     #[test]
@@ -175,11 +185,11 @@ mod tests {
             job(2, JobStatus::Retrying { attempt: 1, wait_s: 3 }),
             job(3, JobStatus::Queued),
             job(4, JobStatus::Done),
-            job(5, JobStatus::Failed { reason: "x".into() }),
+            job(5, JobStatus::Failed { reason: AppError::FileNotFound }),
         ];
         save_queue(d.path(), &jobs).unwrap();
         let st: Vec<_> = load_queue(d.path()).into_iter().map(|j| j.status).collect();
-        assert_eq!(st, vec![JobStatus::Paused, JobStatus::Paused, JobStatus::Queued, JobStatus::Done, JobStatus::Failed { reason: "x".into() }]);
+        assert_eq!(st, vec![JobStatus::Paused, JobStatus::Paused, JobStatus::Queued, JobStatus::Done, JobStatus::Failed { reason: AppError::FileNotFound }]);
     }
 
     /// A real archive.org session is ~700 characters: it must be saved, read back identical,
@@ -191,7 +201,7 @@ mod tests {
         save_auth(d.path(), &a).unwrap();
         assert_eq!(load_auth(d.path()), Some(a));
         let on_disk: Vec<u8> = std::fs::read_dir(d.path()).unwrap().flat_map(|e| std::fs::read(e.unwrap().path()).unwrap()).collect();
-        assert!(!String::from_utf8_lossy(&on_disk).contains("SIGSECRET"), "sessione salvata in chiaro");
+        assert!(!String::from_utf8_lossy(&on_disk).contains("SIGSECRET"), "session saved in plain text");
         clear_auth(d.path());
         assert_eq!(load_auth(d.path()), None);
     }

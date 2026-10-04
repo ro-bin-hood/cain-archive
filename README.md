@@ -21,7 +21,7 @@ Save the items you use into collections, search file names across all of them, a
 - **Persistent queue.** Close the app mid-download, reopen it, press ▶ and it picks up from where it was.
 - **Retries.** Up to 3 attempts per file with increasing waits, honoring `Retry-After` when the server is busy.
 - **Login** for items that need an archive.org account. Your password is never stored; the session is kept encrypted for your Windows user only (DPAPI).
-- **Light, dark or automatic theme; Italian or English interface** (follows Windows by default).
+- **Light, dark or automatic theme; English or Italian interface** (follows Windows by default). Other languages can be added with a single file, see [Translations](#translations).
 - **Windows-safe file names.** Forbidden characters, reserved names (`CON`, `aux.h`…) and path traversal are handled. Names that would collide get ` (2)`, ` (3)`…
 
 Accepted inputs, one per line:
@@ -50,10 +50,22 @@ Requirements:
 npm install
 npm run tauri dev      # run in development
 npm run tauri build    # portable .exe + NSIS installer in src-tauri/target/release/
+npm run check:i18n     # check the translations
 cd src-tauri && cargo test
 ```
 
 Settings and queue live in `%APPDATA%\com.cainarchive.app\`. The login session is in `session.bin` in the same folder, encrypted with DPAPI.
+
+### Translations
+
+Interface texts live in `src/locales/`, one JSON file per language. `en.json` is the source: every text exists there, and anything missing from another language falls back to English.
+
+To add a language, copy `en.json` to `<code>.json` (for example `fr.json` or `pt-BR.json`), set `"language.name"` to the language's own name and translate the values. The app picks the file up and lists it in ⚙ → Language; nothing else needs to change.
+
+- `{name}` placeholders are filled in by the app: keep them as they are.
+- Keys ending in `.one`, `.other` (and `.zero`, `.two`, `.few`, `.many` where the language has them) are [plural forms](https://www.unicode.org/cldr/charts/latest/supplemental/language_plural_rules.html). Only `.other` is required.
+- Engine errors arrive as a code and are translated with the `errors.<code>` keys.
+- `npm run check:i18n` lists texts not translated yet and fails on keys or placeholders that don't exist in English.
 
 ## Name
 

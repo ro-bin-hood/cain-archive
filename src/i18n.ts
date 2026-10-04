@@ -1,157 +1,85 @@
 import { createContext, useContext } from "react";
+import en from "./locales/en.json";
 
-/** Effective UI language. The "system" setting resolves to the system language. */
-export type Lang = "it" | "en";
+/** English is the source language: every key exists in en.json, other locales may be partial. */
+export const SOURCE_LANG = "en";
 
-export function resolveLang(setting: string): Lang {
-  if (setting === "it" || setting === "en") return setting;
-  return navigator.language.toLowerCase().startsWith("it") ? "it" : "en";
+type Messages = Record<string, string>;
+type Vars = Record<string, string | number>;
+
+type PluralCategory = "zero" | "one" | "two" | "few" | "many" | "other";
+type StripPlural<K> = K extends `${infer Base}.${PluralCategory}` ? Base : K;
+/** A key of en.json; plural keys ("x.one", "x.other") are used by their base ("x"). */
+export type MessageKey = StripPlural<keyof typeof en>;
+
+// Every src/locales/<code>.json is a language: adding a file is enough to offer it.
+const LOCALES: Record<string, Messages> = Object.fromEntries(
+  Object.entries(import.meta.glob<Messages>("./locales/*.json", { eager: true, import: "default" }))
+    .map(([path, messages]) => [path.slice("./locales/".length, -".json".length), messages]),
+);
+
+/** Available languages as [code, name in that language], sorted by name. */
+export const LANGUAGES: [string, string][] = Object.entries(LOCALES)
+  .map(([code, m]): [string, string] => [code, m["language.name"] ?? code])
+  .sort((a, b) => a[1].localeCompare(b[1]));
+
+/** The language to use for a setting: an available code, or "system" resolved from the
+ *  system languages (exact match first, then the base language: "pt-BR" → "pt"). */
+export function resolveLang(setting: string): string {
+  if (setting in LOCALES) return setting;
+  for (const tag of navigator.languages ?? [navigator.language]) {
+    if (tag in LOCALES) return tag;
+    const base = tag.toLowerCase().split("-")[0];
+    if (base in LOCALES) return base;
+  }
+  return SOURCE_LANG;
 }
 
-/** English translations; the key is the Italian text used in the code. `{x}` is a placeholder. */
-export const EN: Record<string, string> = {
-  // Title bar
-  "Accedi": "Log in",
-  "Esci": "Log out",
-  "Impostazioni": "Settings",
-  "Riduci a icona": "Minimize",
-  "Ingrandisci": "Maximize",
-  "Chiudi": "Close",
-  // Sidebar
-  "Non salvate": "Unsaved",
-  "Salva in una raccolta": "Save to a collection",
-  "Tutte le sorgenti": "All sources",
-  "Raccolte": "Collections",
-  "Importa raccolta da file": "Import collection from file",
-  "Nuova raccolta": "New collection",
-  "Nuova sotto-raccolta": "New subcollection",
-  "Altro": "More",
-  "Aggiungi sorgenti": "Add sources",
-  "Aggiorna tutte": "Refresh all",
-  "Rinomina": "Rename",
-  "Esporta…": "Export…",
-  "Elimina": "Delete",
-  "Conferma eliminazione": "Confirm delete",
-  "Includi nella ricerca della raccolta": "Include in the collection search",
-  "Aggiorna": "Refresh",
-  "Togli dalla raccolta": "Remove from collection",
-  "Togli dalla raccolta ({n})": "Remove from collection ({n})",
-  "Sposta in": "Move to",
-  "Copia in": "Copy to",
-  "Coda": "Queue",
-  "Aggiornamento non riuscito per {list}": "Refresh failed for {list}",
-  "Raccolta esportata in {path}": "Collection exported to {path}",
-  // Search
-  "Cerca nei file… oppure incolla un link archive.org": "Search files… or paste an archive.org link",
-  "Tutte le sorgenti · {n} sorgenti": "All sources · {n} sources",
-  "{name} · {n} sorgenti": "{name} · {n} sources",
-  "{n} risultati": "{n} results",
-  "mostrati {n}": "showing {n}",
-  "Tutti": "All",
-  "Nessuno": "None",
-  "Seleziona i risultati non ancora scaricati né in coda": "Select results not yet downloaded or queued",
-  "Aggiungi alla selezione i risultati non ancora scaricati né in coda": "Add results not yet downloaded or queued to the selection",
-  "Aggiungi {n} alla coda": "Add {n} to queue",
-  "+{n} da altre ricerche": "+{n} from other searches",
-  "File selezionati in altre ricerche, non visibili qui": "Files selected in other searches, not shown here",
-  "Solo originali": "Originals only",
-  "Ordina i risultati": "Sort results",
-  "Nome": "Name",
-  "Più grandi prima": "Largest first",
-  "Più piccoli prima": "Smallest first",
-  "{n} file · {size} · aggiornata il {date}": "{n} files · {size} · updated {date}",
-  "Aggiornamento…": "Refreshing…",
-  "Salva": "Save",
-  "Crea una raccolta o incolla un link archive.org per iniziare": "Create a collection or paste an archive.org link to get started",
-  "Aggiungi sorgenti con ⋯ → Aggiungi sorgenti": "Add sources with ⋯ → Add sources",
-  "Tutte le sorgenti di questa raccolta sono escluse dalla ricerca: spunta quelle da includere": "All sources in this collection are excluded from search: tick the ones to include",
-  "Nessuna sorgente salvata: le Non salvate si cercano selezionandole a sinistra": "No saved sources: search unsaved ones by selecting them on the left",
-  "Le raccolte sono vuote: aggiungi sorgenti con ⋯ → Aggiungi sorgenti": "Your collections are empty: add sources with ⋯ → Add sources",
-  "Nessun file corrisponde alla ricerca": "No file matches your search",
-  "scaricato": "downloaded",
-  "in coda": "queued",
-  "Già presente nella cartella di destinazione": "Already in the destination folder",
-  "Già nella coda": "Already in the queue",
-  // Adding and importing
-  "Importa raccolta": "Import collection",
-  "Un link archive.org o un identificatore per riga": "One archive.org link or identifier per line",
-  "{n} riga non riconosciuta nel file, ignorata": "{n} unrecognized line in the file, skipped",
-  "{n} righe non riconosciute nel file, ignorate": "{n} unrecognized lines in the file, skipped",
-  "Raccolta": "Collection",
-  "Sotto-raccolte: {list}": "Subcollections: {list}",
-  "Raccolta non trovata": "Collection not found",
-  "Nuova raccolta…": "New collection…",
-  "Nome della nuova raccolta": "New collection name",
-  "In attesa…": "Waiting…",
-  "Aggiunta · {n} file": "Added · {n} files",
-  "Aggiunta…": "Adding…",
-  "Importa": "Import",
-  "Aggiungi": "Add",
-  "Crea": "Create",
-  "Rinomina raccolta": "Rename collection",
-  "Annulla": "Cancel",
-  "Crea e salva": "Create and save",
-  // Queue
-  "{n} in corso": "{n} downloading",
-  "Coda: {n} file": "Queue: {n} files",
-  "Coda vuota": "Queue empty",
-  "Apri o chiudi la coda": "Open or close the queue",
-  "Torna alla ricerca": "Back to search",
-  "Seleziona tutte le sorgenti": "Select all sources",
-  "Coda · {n} file": "Queue · {n} files",
-  "{done} di {total}": "{done} of {total}",
-  "Pulisci completati": "Clear completed",
-  "Avvia": "Start",
-  "La coda è vuota: cerca dei file e aggiungili con «Aggiungi alla coda».": "The queue is empty: search for files and add them with “Add to queue”.",
-  "In coda": "Queued",
-  "Avvio…": "Starting…",
-  "Riprovo tra {n} s": "Retrying in {n} s",
-  "Riprovo…": "Retrying…",
-  "In pausa": "Paused",
-  "Completato": "Done",
-  "Pausa": "Pause",
-  "Riprendi": "Resume",
-  "Riprova": "Retry",
-  "Apri cartella": "Open folder",
-  "Rimuovi": "Remove",
-  "Trascina per riordinare": "Drag to reorder",
-  // Settings
-  "Tema": "Theme",
-  "Automatico": "Automatic",
-  "Chiaro": "Light",
-  "Scuro": "Dark",
-  "Lingua": "Language",
-  "Cartella di destinazione": "Destination folder",
-  "Sfoglia…": "Browse…",
-  "Download in parallelo": "Parallel downloads",
-  "3–5 va bene; se compaiono molti \"Riprovo\", abbassa.": "3–5 works well; lower it if you see many \"Retrying\".",
-  "Filtri predefiniti": "Default filters",
-  "\"Solo originali\" decide lo stato iniziale del filtro nella ricerca. La cartella vale per i file aggiunti da ora in poi.": "\"Originals only\" sets the initial state of the search filter. The folder applies to files added from now on.",
-  // Login
-  "Accedi a archive.org": "Log in to archive.org",
-  "Serve per gli item visibili solo agli utenti registrati. La password non viene salvata.": "Needed for items visible only to registered users. Your password is never stored.",
-  "Accesso…": "Logging in…",
-  // App
-  "Si possono importare solo file .txt o .csv": "Only .txt or .csv files can be imported",
-  "Nessuna sorgente valida in {file}": "No valid source in {file}",
-  "Nessuna sorgente valida nel file": "No valid source in the file",
-  "Trascina per ridimensionare · doppio clic per ripristinare": "Drag to resize · double-click to reset",
-  "Rilascia per importare la raccolta": "Drop to import the collection",
-  "mai": "never",
-};
+function lookup(lang: string, key: string, count: number | undefined): string | undefined {
+  const tables = [LOCALES[lang], LOCALES[SOURCE_LANG]].filter(Boolean);
+  for (const m of tables) {
+    if (count !== undefined) {
+      const plural = m[`${key}.${new Intl.PluralRules(lang).select(count)}`] ?? m[`${key}.other`];
+      if (plural !== undefined) return plural;
+    }
+    if (m[key] !== undefined) return m[key];
+  }
+  return undefined;
+}
 
-export function translate(lang: Lang, it: string, vars?: Record<string, string | number>): string {
-  let s = lang === "en" ? EN[it] ?? it : it;
-  if (vars) for (const [k, v] of Object.entries(vars)) s = s.split(`{${k}}`).join(String(v));
+/** The text for `key` in `lang`, falling back to English. `{name}` placeholders are filled
+ *  from `vars`; numbers are formatted for the language, and `n` picks the plural form. */
+export function translate(lang: string, key: MessageKey | string, vars?: Vars): string {
+  const n = vars?.n;
+  let s = lookup(lang, key, typeof n === "number" ? n : undefined) ?? key;
+  if (vars) {
+    const nf = new Intl.NumberFormat(lang);
+    for (const [k, v] of Object.entries(vars)) s = s.split(`{${k}}`).join(typeof v === "number" ? nf.format(v) : v);
+  }
   return s;
 }
 
-export const LangContext = createContext<Lang>("it");
+/** An error from the engine (`{code, ...params}`) in `lang`; anything else as plain text. */
+export function translateError(lang: string, err: unknown): string {
+  if (err && typeof err === "object" && "code" in err && typeof err.code === "string") {
+    const { code, ...params } = err as { code: string } & Vars;
+    const key = `errors.${code}`;
+    if (lookup(lang, key, undefined) !== undefined) return translate(lang, key, params);
+    return [code, ...Object.values(params)].join(": ");
+  }
+  return String(err);
+}
 
-export type T = (it: string, vars?: Record<string, string | number>) => string;
+export type T = (key: MessageKey, vars?: Vars) => string;
+export type TE = (err: unknown) => string;
 
-/** Translation function and number/date locale for the current language. */
-export function useT(): { t: T; locale: string } {
-  const lang = useContext(LangContext);
-  return { t: (it, vars) => translate(lang, it, vars), locale: lang === "en" ? "en-US" : "it-IT" };
+export function translator(lang: string): { t: T; te: TE; locale: string } {
+  return { t: (key, vars) => translate(lang, key, vars), te: (err) => translateError(lang, err), locale: lang };
+}
+
+export const LangContext = createContext<string>(SOURCE_LANG);
+
+/** Translation functions and number/date locale for the current language. */
+export function useT(): { t: T; te: TE; locale: string } {
+  return translator(useContext(LangContext));
 }

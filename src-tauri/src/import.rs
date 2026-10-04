@@ -4,7 +4,7 @@
 //! starting with `#` is the collection name; other `#` lines and blank lines are comments.
 //! CSV "title,link" rows are accepted too (`,` `;` or tab separators): the link field counts.
 
-use crate::i18n::m;
+use crate::error::{AppError, AppResult};
 use crate::ia;
 use serde::Serialize;
 use std::collections::HashSet;
@@ -74,7 +74,7 @@ pub fn parse_list(text: &str) -> ParsedList {
                     Some(sec) => &mut sec.inputs,
                     None => &mut inputs,
                 };
-                if seen.last_mut().expect("sempre almeno un insieme").insert(p.item_id) {
+                if seen.last_mut().expect("always at least one set").insert(p.item_id) {
                     target.push(c.to_string());
                 }
             }
@@ -87,8 +87,8 @@ pub fn parse_list(text: &str) -> ParsedList {
 }
 
 /// Reads a list file; without a `# name` line, the name is the file name.
-pub fn read_list_file(path: &Path) -> Result<ParsedList, String> {
-    let bytes = std::fs::read(path).map_err(|e| format!("{}: {e}", m("Impossibile leggere il file", "Could not read the file")))?;
+pub fn read_list_file(path: &Path) -> AppResult<ParsedList> {
+    let bytes = std::fs::read(path).map_err(|e| AppError::ReadFileFailed { detail: e.to_string() })?;
     let mut list = parse_list(&String::from_utf8_lossy(&bytes));
     if list.name.is_none() {
         list.name = path.file_stem().map(|s| s.to_string_lossy().into_owned());
@@ -116,7 +116,7 @@ pub fn format_list(name: &str, sources: &[(String, Option<String>)]) -> String {
 
 /// Like `format_list`, with subcollections written after a `# --- Name ---` separator.
 pub fn format_list_with(name: &str, sources: &[(String, Option<String>)], subs: &[(String, SourceList)]) -> String {
-    let mut out = format!("# {}\n# Cain Archive: una sorgente per riga, \"titolo, link\"; \"# --- Nome ---\" apre una sotto-raccolta\n", name.trim());
+    let mut out = format!("# {}\n# Cain Archive: one source per line, \"title, link\"; \"# --- Name ---\" starts a subcollection\n", name.trim());
     push_sources(&mut out, sources);
     for (sub, list) in subs {
         out.push_str(&format!("\n# --- {} ---\n", sub.trim()));
@@ -176,8 +176,8 @@ mod tests {
 nasa
 ").unwrap();
         assert_eq!(read_list_file(&f).unwrap().name.as_deref(), Some("Dal file"));
-        let e = read_list_file(&d.path().join("manca.txt")).unwrap_err();
-        assert!(e.starts_with("Impossibile leggere il file"), "{e}");
+        let e = read_list_file(&d.path().join("missing.txt")).unwrap_err();
+        assert!(matches!(e, AppError::ReadFileFailed { .. }), "{e:?}");
     }
 
     #[test]

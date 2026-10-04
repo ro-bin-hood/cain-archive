@@ -3,7 +3,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { api, events, type CollectionView, type LibraryState, type ParsedList, type Settings } from "./api";
 import { initialQueue, queueReducer, type View } from "./state";
-import { LangContext, resolveLang, translate } from "./i18n";
+import { LangContext, SOURCE_LANG, resolveLang, translator } from "./i18n";
 import { TopBar } from "./components/TopBar";
 import { Sidebar } from "./components/Sidebar";
 import { SearchView } from "./components/SearchView";
@@ -29,7 +29,8 @@ export default function App() {
   const [lib, setLib] = useState<LibraryState>({ collections: [], unsaved: [] });
   const [view, setView] = useState<View>({ kind: "search", scope: { kind: "all" } });
   const [query, setQuery] = useState("");
-  const [alert, setAlert] = useState<string | null>(null);
+  // A translated text or an engine error, translated when shown so it follows the language.
+  const [alert, setAlert] = useState<unknown>(null);
   const [dialog, setDialog] = useState<Dialog | null>(null);
   const [dragging, setDragging] = useState(false);
   const [pending, setPending] = useState<string[]>([]);
@@ -42,7 +43,7 @@ export default function App() {
   const lastSearch = useRef<View>({ kind: "search", scope: { kind: "all" } });
   if (view.kind === "search") lastSearch.current = view;
   const toggleQueue = () => setView((v) => (v.kind === "queue" ? lastSearch.current : { kind: "queue" }));
-  const langRef = useRef<"it" | "en">("it");
+  const langRef = useRef<string>(SOURCE_LANG);
   dialogRef.current = dialog;
 
   // List files dropped on the window: imported one at a time, each in its own dialog.
@@ -54,7 +55,7 @@ export default function App() {
       else if (p.type === "drop") {
         setDragging(false);
         const lists = p.paths.filter((f) => /\.(txt|csv)$/i.test(f));
-        if (lists.length < p.paths.length) setAlert(translate(langRef.current, "Si possono importare solo file .txt o .csv"));
+        if (lists.length < p.paths.length) setAlert(translator(langRef.current).t("app.onlyTxtCsv"));
         if (lists.length && !dialogRef.current) setPending(lists);
       }
     });
@@ -68,10 +69,10 @@ export default function App() {
     setReading(true);
     api.readImportFile(next)
       .then((list) => {
-        if (!list.inputs.length && !list.sections.some((s) => s.inputs.length)) setAlert(t("Nessuna sorgente valida in {file}", { file: next }));
+        if (!list.inputs.length && !list.sections.some((s) => s.inputs.length)) setAlert(t("app.noValidSourceIn", { file: next }));
         else setDialog({ kind: "add", collectionId: null, prefill: list });
       })
-      .catch((e) => setAlert(String(e)))
+      .catch(setAlert)
       .finally(() => setReading(false));
   }, [dialog, reading, pending]);
 
@@ -147,20 +148,19 @@ export default function App() {
     if (!exists) setView({ kind: "search", scope: { kind: "all" } });
   }, [lib, view]);
 
-  const onError = useCallback((msg: string) => setAlert(msg), []);
+  const onError = useCallback((err: unknown) => setAlert(err), []);
 
-  // Language: "Automatic" follows the system; the effective language also goes to the engine for its messages.
+  // Language: "Automatic" follows the system languages, falling back to English.
   const lang = resolveLang(settings?.language ?? "system");
-  const t = (it: string, vars?: Record<string, string | number>) => translate(lang, it, vars);
+  const { t, te } = translator(lang);
   langRef.current = lang;
   useEffect(() => {
     document.documentElement.lang = lang;
-    api.setUiLanguage(lang).catch(() => {});
   }, [lang]);
 
   const updateSettings = (s: Settings) => {
     setSettings(s);
-    api.setSettings(s).catch((e) => setAlert(String(e)));
+    api.setSettings(s).catch(setAlert);
   };
 
   // Links pasted into the search bar open as unsaved sources; the last one opened is selected.
@@ -171,7 +171,7 @@ export default function App() {
       try {
         last = (await api.openUnsaved(l)).item_id;
       } catch (e) {
-        errors.push(`${l}: ${e}`);
+        errors.push(`${l}: ${te(e)}`);
       }
     }
     setLib(await api.libraryState());
@@ -181,11 +181,11 @@ export default function App() {
 
   // "Import collection": the file read in Rust prefills the add dialog.
   const importList = () => {
-    api.pickImportFile().then((list) => {
+    api.pickImportFile(t("app.listFileType")).then((list) => {
       if (!list) return;
-      if (!list.inputs.length && !list.sections.some((s) => s.inputs.length)) setAlert(t("Nessuna sorgente valida nel file"));
+      if (!list.inputs.length && !list.sections.some((s) => s.inputs.length)) setAlert(t("app.noValidSource"));
       else setDialog({ kind: "add", collectionId: null, prefill: list });
-    }).catch((e) => setAlert(String(e)));
+    }).catch(setAlert);
   };
 
   const queueCount = q.jobs.filter((j) => ["Queued", "Downloading", "Retrying"].includes(j.status.kind)).length;
@@ -213,12 +213,12 @@ export default function App() {
           onAddSources={(id) => setDialog({ kind: "add", collectionId: id })}
           onSaveUnsaved={(id) => setDialog({ kind: "save", itemId: id })}
         />
-        <div className="resizer" title={t("Trascina per ridimensionare · doppio clic per ripristinare")} onMouseDown={startResize} onDoubleClick={() => saveWidth(250)} />
+        <div className="resizer" title={t("app.resizeHint")} onMouseDown={startResize} onDoubleClick={() => saveWidth(250)} />
         <main className="main-pane">
-          {alert && (
+          {alert != null && (
             <div className="banner row">
-              <span className="grow" style={{ whiteSpace: "pre-line" }}>{alert}</span>
-              <button className="icon-btn" title={t("Chiudi")} onClick={() => setAlert(null)}>✕</button>
+              <span className="grow" style={{ whiteSpace: "pre-line" }}>{te(alert)}</span>
+              <button className="icon-btn" title={t("common.close")} onClick={() => setAlert(null)}>✕</button>
             </div>
           )}
           {view.kind === "queue" ? (
@@ -239,14 +239,14 @@ export default function App() {
           )}
         </main>
       </div>
-      {dragging && <div className="drop-overlay"><div>⤓ {t("Rilascia per importare la raccolta")}</div></div>}
+      {dragging && <div className="drop-overlay"><div>⤓ {t("app.dropToImport")}</div></div>}
       <QueueStrip jobs={q.jobs} running={q.running} progress={q.progress} onOpen={toggleQueue} />
 
       {dialog?.kind === "settings" && <SettingsPanel settings={settings} onChange={updateSettings} onClose={close} />}
       {dialog?.kind === "login" && <LoginDialog onDone={(u) => { setUser(u); close(); }} onClose={close} />}
       {dialog?.kind === "add" && <AddSourcesDialog lib={lib} initialCollection={dialog.collectionId} prefill={dialog.prefill} onLibrary={setLib} onClose={close} />}
       {dialog?.kind === "new" && (
-        <NameDialog title={t("Nuova raccolta")} confirm={t("Crea")} onClose={close} onSubmit={async (name) => {
+        <NameDialog title={t("dialog.newCollection")} confirm={t("common.create")} onClose={close} onSubmit={async (name) => {
           const st = await api.createCollection(name);
           setLib(st);
           const id = st.collections[st.collections.length - 1].id;
@@ -256,7 +256,7 @@ export default function App() {
         }} />
       )}
       {dialog?.kind === "newsub" && (
-        <NameDialog title={t("Nuova sotto-raccolta")} confirm={t("Crea")} onClose={close} onSubmit={async (name) => {
+        <NameDialog title={t("dialog.newSubcollection")} confirm={t("common.create")} onClose={close} onSubmit={async (name) => {
           const st = await api.createSubcollection(dialog.parent, name);
           setLib(st);
           const sub = st.collections.find((c) => c.parent === dialog.parent && c.name.toLowerCase() === name.trim().toLowerCase());
@@ -265,7 +265,7 @@ export default function App() {
         }} />
       )}
       {dialog?.kind === "rename" && (
-        <NameDialog title={t("Rinomina raccolta")} initial={dialog.collection.name} confirm={t("Rinomina")} onClose={close} onSubmit={async (name) => {
+        <NameDialog title={t("dialog.renameCollection")} initial={dialog.collection.name} confirm={t("common.rename")} onClose={close} onSubmit={async (name) => {
           setLib(await api.renameCollection(dialog.collection.id, name));
           close();
         }} />

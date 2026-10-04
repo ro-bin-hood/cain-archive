@@ -11,12 +11,12 @@ export function QueueStrip({ jobs, running, progress, onOpen }: Props) {
   const pct = progress && progress.total ? Math.min(100, (progress.done / progress.total) * 100) : 0;
   let text: string;
   if (running && active > 0 && progress) {
-    text = `⬇ ${t("{n} in corso", { n: active })} · ${pct.toFixed(0)}% · ${human(progress.speed)}/s${progress.eta_s != null ? ` · ${duration(progress.eta_s)}` : ""}`;
+    text = `⬇ ${t("queue.downloading", { n: active })} · ${pct.toFixed(0)}% · ${human(progress.speed)}/s${progress.eta_s != null ? ` · ${duration(progress.eta_s)}` : ""}`;
   } else {
-    text = jobs.length ? t("Coda: {n} file", { n: jobs.length }) : t("Coda vuota");
+    text = jobs.length ? t("queue.strip", { n: jobs.length }) : t("queue.stripEmpty");
   }
   return (
-    <footer className="strip" onClick={onOpen} title={t("Apri o chiudi la coda")}>
+    <footer className="strip" onClick={onOpen} title={t("queue.toggle")}>
       <span className={running ? "" : "muted"}>{text}</span>
       <div className="grow" />
       {running && <div className="bar" style={{ width: 180 }}><i style={{ width: `${pct}%` }} /></div>}

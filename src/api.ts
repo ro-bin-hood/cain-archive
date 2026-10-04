@@ -1,6 +1,8 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 
+/** An engine error: a code (translated as `errors.<code>`) plus its parameters. */
+export type AppError = { code: string; [param: string]: string | number };
 export type FileEntry = { name: string; size: number; format: string; original: boolean };
 export type JobStatus =
   | { kind: "Queued" }
@@ -8,15 +10,16 @@ export type JobStatus =
   | { kind: "Retrying"; attempt: number; wait_s: number }
   | { kind: "Paused" }
   | { kind: "Done" }
-  | { kind: "Failed"; reason: string };
+  | { kind: "Failed"; reason: AppError };
 export type Job = { id: number; item_id: string; name: string; size: number; dest: string; status: JobStatus };
 export type Theme = "system" | "light" | "dark";
-export type Language = "system" | "it" | "en";
+/** "system" or a language code with a file in src/locales. */
+export type Language = string;
 export type Settings = { out_dir: string; workers: number; default_originals: boolean; default_exts: string; theme: Theme; language: Language };
 export type FullState = { settings: Settings; user: string | null; jobs: Job[]; running: boolean };
 export type JobProgress = { id: number; done: number; total: number | null; speed: number };
 export type Snapshot = { jobs: JobProgress[]; done: number; total: number; speed: number; eta_s: number | null };
-export type SourceMeta = { item_id: string; title: string | null; file_count: number; total_size: number; updated_at: number; error: string | null };
+export type SourceMeta = { item_id: string; title: string | null; file_count: number; total_size: number; updated_at: number; error: AppError | null };
 export type SourceView = SourceMeta & { included: boolean };
 export type CollectionView = { id: string; name: string; sources: SourceView[]; parent: string | null };
 export type LibraryState = { collections: CollectionView[]; unsaved: SourceMeta[] };
@@ -45,7 +48,7 @@ export const api = {
   login: (email: string, password: string) => invoke<string>("login", { email, password }),
   logout: () => invoke<void>("logout"),
   libraryState: () => invoke<LibraryState>("library_state"),
-  takeLibraryWarning: () => invoke<string | null>("take_library_warning"),
+  takeLibraryWarning: () => invoke<AppError | null>("take_library_warning"),
   createCollection: (name: string) => invoke<LibraryState>("create_collection", { name }),
   renameCollection: (id: string, name: string) => invoke<LibraryState>("rename_collection", { id, name }),
   deleteCollection: (id: string) => invoke<LibraryState>("delete_collection", { id }),
@@ -56,10 +59,9 @@ export const api = {
   openUnsaved: (input: string) => invoke<SourceMeta>("open_unsaved", { input }),
   closeUnsaved: (itemId: string) => invoke<LibraryState>("close_unsaved", { itemId }),
   saveUnsaved: (itemId: string, collectionId: string) => invoke<LibraryState>("save_unsaved", { itemId, collectionId }),
-  setUiLanguage: (lang: "it" | "en") => invoke<void>("set_ui_language", { lang }),
   readImportFile: (path: string) => invoke<ParsedList>("read_import_file", { path }),
-  pickImportFile: () => invoke<ParsedList | null>("pick_import_file"),
-  exportCollection: (id: string) => invoke<string | null>("export_collection", { id }),
+  pickImportFile: (filterName: string) => invoke<ParsedList | null>("pick_import_file", { filterName }),
+  exportCollection: (id: string, filterName: string) => invoke<string | null>("export_collection", { id, filterName }),
   createSubcollection: (parent: string, name: string) => invoke<LibraryState>("create_subcollection", { parent, name }),
   moveCollection: (id: string, before: string | null) => invoke<LibraryState>("move_collection", { id, before }),
   removeSources: (collectionId: string, itemIds: string[]) => invoke<LibraryState>("remove_sources", { collectionId, itemIds }),
@@ -72,5 +74,5 @@ export const events = {
   onChanged: (cb: (p: { jobs: Job[]; running: boolean }) => void) =>
     listen<{ jobs: Job[]; running: boolean }>("queue-changed", (e) => cb(e.payload)),
   onProgress: (cb: (s: Snapshot) => void) => listen<Snapshot>("queue-progress", (e) => cb(e.payload)),
-  onAlert: (cb: (m: string) => void) => listen<string>("queue-alert", (e) => cb(e.payload)),
+  onAlert: (cb: (e: AppError) => void) => listen<AppError>("queue-alert", (e) => cb(e.payload)),
 };

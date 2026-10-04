@@ -1,5 +1,5 @@
 mod common;
-use cain_archive_lib::ia;
+use cain_archive_lib::{error::AppError, ia};
 
 #[tokio::test]
 async fn fetch_item_lists_files_without_service_files() {
@@ -15,7 +15,7 @@ async fn fetch_item_lists_files_without_service_files() {
 async fn fetch_item_reports_missing_items() {
     let (base, _) = common::start().await;
     let err = ia::fetch_item(&ia::client(), &base, None, "missing").await.unwrap_err();
-    assert!(err.contains("prova ad accedere"), "{err}");
+    assert_eq!(err, AppError::ItemUnavailableLogIn);
 }
 
 #[tokio::test]
@@ -24,8 +24,8 @@ async fn login_returns_session_or_readable_error() {
     let c = ia::client();
     let a = ia::login(&c, &base, "me@x.it", "pw").await.unwrap();
     assert_eq!((a.user.as_str(), a.cookie_sig.as_str(), a.access.as_str(), a.secret.as_str()), ("tester", "SIG", "AK", "SK"));
-    assert_eq!(ia::login(&c, &base, "me@x.it", "no").await.unwrap_err(), "Password errata");
-    assert_eq!(ia::login(&c, &base, "x@x.it", "pw").await.unwrap_err(), "Account inesistente");
+    assert_eq!(ia::login(&c, &base, "me@x.it", "no").await.unwrap_err(), AppError::WrongPassword);
+    assert_eq!(ia::login(&c, &base, "x@x.it", "pw").await.unwrap_err(), AppError::AccountNotFound);
 }
 
 #[tokio::test]

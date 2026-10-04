@@ -240,7 +240,7 @@ mod tests {
         assert_eq!(names(&r), ["a:x.ZIP", "a:y.zip"]);
         assert_eq!(r.total, 2);
         let counts: Vec<(String, usize)> = r.extensions.iter().map(|e| (e.ext.clone(), e.count)).collect();
-        assert_eq!(counts, [("zip".to_string(), 2), ("flac".to_string(), 1), ("iso".to_string(), 1)], "contate prima del filtro per estensione");
+        assert_eq!(counts, [("zip".to_string(), 2), ("flac".to_string(), 1), ("iso".to_string(), 1)], "counted before the extension filter");
         let only_orig = search_with(&[&a], "", &Filters { originals_only: true, exts: vec![], sort: Sort::Name });
         assert!(only_orig.extensions.iter().all(|e| e.ext != "flac"));
     }
@@ -268,7 +268,7 @@ mod tests {
         std::fs::write(d.path().join("it/su_disco.bin"), b"abc").unwrap();
         std::fs::write(d.path().join("it/corto.bin"), b"abc").unwrap();
         let job = |name: &str, status: JobStatus| Job { id: 1, item_id: "it".into(), name: name.into(), size: 5, dest: d.path().join("it").join(name), status };
-        let jobs = vec![job("in_coda.bin", JobStatus::Paused), job("fallito.bin", JobStatus::Failed { reason: "x".into() }), job("finito.bin", JobStatus::Done)];
+        let jobs = vec![job("in_coda.bin", JobStatus::Paused), job("fallito.bin", JobStatus::Failed { reason: crate::error::AppError::FileNotFound }), job("finito.bin", JobStatus::Done)];
         let mut r = search(&[&a], "", false);
         mark_local(&mut r.results, &jobs, d.path());
         let got: Vec<(String, Option<Local>)> = r.results.iter().map(|h| (h.name.clone(), h.local)).collect();

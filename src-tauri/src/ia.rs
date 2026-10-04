@@ -1,5 +1,5 @@
 use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION, COOKIE, LOCATION, USER_AGENT};
-use crate::i18n::m;
+use crate::error::{AppError, AppResult};
 use reqwest::{redirect::Policy, Client, Response, Url};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -96,7 +96,7 @@ pub fn client() -> Client {
         .connect_timeout(Duration::from_secs(30))
         .read_timeout(Duration::from_secs(60))
         .build()
-        .expect("client HTTP")
+        .expect("HTTP client")
 }
 
 pub fn auth_headers(auth: Option<&Auth>) -> HeaderMap {
@@ -120,8 +120,8 @@ fn trusted(orig: &Url, next: &Url) -> bool {
 
 /// GET that follows redirects by hand. reqwest would drop Cookie/Authorization when the redirect
 /// changes host (archive.org/download → iaNNN.us.archive.org), but archive.org needs them.
-pub async fn get(client: &Client, url: &str, headers: &HeaderMap) -> Result<Response, String> {
-    let orig = Url::parse(url).map_err(|e| e.to_string())?;
+pub async fn get(client: &Client, url: &str, headers: &HeaderMap) -> AppResult<Response> {
+    let orig = Url::parse(url).map_err(AppError::other)?;
     let mut url = orig.clone();
     for _ in 0..10 {
         let mut h = headers.clone();
@@ -129,14 +129,14 @@ pub async fn get(client: &Client, url: &str, headers: &HeaderMap) -> Result<Resp
             h.remove(COOKIE);
             h.remove(AUTHORIZATION);
         }
-        let resp = client.get(url.clone()).headers(h).send().await.map_err(|e| e.to_string())?;
+        let resp = client.get(url.clone()).headers(h).send().await.map_err(|e| AppError::Network { detail: e.to_string() })?;
         if !resp.status().is_redirection() {
             return Ok(resp);
         }
-        let loc = resp.headers().get(LOCATION).and_then(|v| v.to_str().ok()).ok_or(m("redirect senza Location", "redirect without Location"))?;
-        url = url.join(loc).map_err(|e| e.to_string())?;
+        let loc = resp.headers().get(LOCATION).and_then(|v| v.to_str().ok()).ok_or(AppError::RedirectWithoutLocation)?;
+        url = url.join(loc).map_err(AppError::other)?;
     }
-    Err(m("troppi redirect", "too many redirects").into())
+    Err(AppError::TooManyRedirects)
 }
 
 /// `metadata.title` can be a string or a list of strings.
@@ -148,35 +148,29 @@ pub fn title_of(meta: &Value) -> Option<String> {
     }
 }
 
-pub async fn fetch_item(client: &Client, base: &str, auth: Option<&Auth>, id: &str) -> Result<Item, String> {
-    let resp = get(client, &format!("{base}/metadata/{id}"), &auth_headers(auth))
-        .await
-        .map_err(|e| format!("{}: {e}", m("Errore di rete", "Network error")))?;
+pub async fn fetch_item(client: &Client, base: &str, auth: Option<&Auth>, id: &str) -> AppResult<Item> {
+    let resp = get(client, &format!("{base}/metadata/{id}"), &auth_headers(auth)).await?;
     if !resp.status().is_success() {
-        return Err(format!("{} {}", m("Errore HTTP", "HTTP error"), resp.status().as_u16()));
+        return Err(AppError::Http { status: resp.status().as_u16() });
     }
-    let meta: Value = resp.json().await.map_err(|e| format!("{}: {e}", m("Risposta non valida", "Invalid response")))?;
+    let meta: Value = resp.json().await.map_err(|e| AppError::InvalidResponse { detail: e.to_string() })?;
     let files = files_from_metadata(&meta);
     if files.is_empty() {
-        return Err(if auth.is_some() {
-            m("Item vuoto, inesistente o riservato", "Item empty, missing or restricted").into()
-        } else {
-            m("Item vuoto, inesistente o ad accesso ristretto (prova ad accedere)", "Item empty, missing or restricted (try logging in)").into()
-        });
+        return Err(if auth.is_some() { AppError::ItemUnavailable } else { AppError::ItemUnavailableLogIn });
     }
     Ok(Item { id: id.to_string(), title: title_of(&meta), files })
 }
 
-pub fn parse_login_response(v: &Value, email: &str) -> Result<Auth, String> {
+pub fn parse_login_response(v: &Value, email: &str) -> AppResult<Auth> {
     if v.get("success").and_then(Value::as_bool) != Some(true) {
-        let reason = v.pointer("/values/reason").and_then(Value::as_str).unwrap_or("sconosciuto");
+        let reason = v.pointer("/values/reason").and_then(Value::as_str).unwrap_or("unknown");
         return Err(match reason {
-            "account_not_found" => m("Account inesistente", "Account not found").into(),
-            "account_bad_password" => m("Password errata", "Wrong password").into(),
-            r => format!("{} ({r})", m("Login fallito", "Login failed")),
+            "account_not_found" => AppError::AccountNotFound,
+            "account_bad_password" => AppError::WrongPassword,
+            r => AppError::LoginFailed { reason: r.to_string() },
         });
     }
-    let s = |p: &str| v.pointer(p).and_then(Value::as_str).map(str::to_string).ok_or_else(|| m("Risposta di login incompleta", "Incomplete login response").to_string());
+    let s = |p: &str| v.pointer(p).and_then(Value::as_str).map(str::to_string).ok_or(AppError::IncompleteLoginResponse);
     Ok(Auth {
         user: s("/values/screenname").unwrap_or_else(|_| email.to_string()),
         cookie_user: s("/values/cookies/logged-in-user")?,
@@ -186,15 +180,15 @@ pub fn parse_login_response(v: &Value, email: &str) -> Result<Auth, String> {
     })
 }
 
-pub async fn login(client: &Client, base: &str, email: &str, password: &str) -> Result<Auth, String> {
+pub async fn login(client: &Client, base: &str, email: &str, password: &str) -> AppResult<Auth> {
     let resp = client
         .post(format!("{base}/services/xauthn/?op=login"))
         .header(USER_AGENT, UA)
         .form(&[("email", email), ("password", password)])
         .send()
         .await
-        .map_err(|e| format!("{}: {e}", m("Errore di rete", "Network error")))?;
-    let v: Value = resp.json().await.map_err(|e| format!("{}: {e}", m("Risposta non valida", "Invalid response")))?;
+        .map_err(|e| AppError::Network { detail: e.to_string() })?;
+    let v: Value = resp.json().await.map_err(|e| AppError::InvalidResponse { detail: e.to_string() })?;
     parse_login_response(&v, email)
 }
 
@@ -255,9 +249,9 @@ mod tests {
     #[test]
     fn login_response_errors_are_readable() {
         let e = |r: &str| parse_login_response(&json!({"success": false, "values": {"reason": r}}), "x").unwrap_err();
-        assert_eq!(e("account_not_found"), "Account inesistente");
-        assert_eq!(e("account_bad_password"), "Password errata");
-        assert_eq!(e("other"), "Login fallito (other)");
+        assert_eq!(e("account_not_found"), AppError::AccountNotFound);
+        assert_eq!(e("account_bad_password"), AppError::WrongPassword);
+        assert_eq!(e("other"), AppError::LoginFailed { reason: "other".into() });
     }
 
     #[test]

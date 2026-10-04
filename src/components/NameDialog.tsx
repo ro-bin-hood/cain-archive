@@ -6,7 +6,7 @@ type Props = { title: string; initial?: string; confirm: string; onSubmit: (name
 /** Dialog with a single text field; onSubmit errors appear below the field. */
 export function NameDialog({ title, initial = "", confirm, onSubmit, onClose }: Props) {
   const [name, setName] = useState(initial);
-  const { t } = useT();
+  const { t, te } = useT();
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const submit = async (e: FormEvent) => {
@@ -15,7 +15,7 @@ export function NameDialog({ title, initial = "", confirm, onSubmit, onClose }: 
     try {
       await onSubmit(name);
     } catch (err) {
-      setError(String(err));
+      setError(te(err));
       setBusy(false);
     }
   };
@@ -27,7 +27,7 @@ export function NameDialog({ title, initial = "", confirm, onSubmit, onClose }: 
         {error && <span className="err small">{error}</span>}
         <div className="row">
           <div className="grow" />
-          <button type="button" className="btn ghost" onClick={onClose}>{t("Annulla")}</button>
+          <button type="button" className="btn ghost" onClick={onClose}>{t("common.cancel")}</button>
           <button className="btn" disabled={busy}>{confirm}</button>
         </div>
       </form>

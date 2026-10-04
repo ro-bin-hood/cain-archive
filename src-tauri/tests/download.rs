@@ -1,5 +1,5 @@
 mod common;
-use cain_archive_lib::{download::{self, Finish, Request}, ia};
+use cain_archive_lib::{error::AppError, download::{self, Finish, Request}, ia};
 use std::{path::Path, sync::Mutex, time::Duration};
 use tokio_util::sync::CancellationToken;
 
@@ -91,7 +91,7 @@ async fn resumes_after_connection_drop() {
     assert_eq!(f, Finish::Done(body.len() as u64));
     assert_eq!(std::fs::read(d.path().join("f.bin")).unwrap(), body);
     assert_eq!(retries.len(), 1);
-    assert_eq!(srv.ranges.lock().unwrap().len(), 1, "il secondo tentativo deve riprendere con Range");
+    assert_eq!(srv.ranges.lock().unwrap().len(), 1, "the second attempt must resume with Range");
 }
 
 /// A large file that drops more than 3 times but makes progress each time must not fail.
@@ -104,7 +104,7 @@ async fn attempts_reset_when_a_drop_still_made_progress() {
     assert_eq!(f, Finish::Done(body.len() as u64));
     assert_eq!(std::fs::read(d.path().join("f.bin")).unwrap(), body);
     assert_eq!(retries.len(), 4);
-    assert!(retries.iter().all(|(a, _)| *a == 1), "ogni caduta con progressi riparte dal tentativo 1: {retries:?}");
+    assert!(retries.iter().all(|(a, _)| *a == 1), "every drop with progress starts again from attempt 1: {retries:?}");
 }
 
 #[tokio::test]
@@ -112,10 +112,10 @@ async fn forbidden_and_not_found_fail_immediately() {
     let (base, _) = common::start().await;
     let d = tempfile::tempdir().unwrap();
     let (f, retries) = run(&base, "denied", "f.bin", d.path(), None, CancellationToken::new()).await;
-    assert_eq!(f, Finish::Failed("Accesso negato: serve accedere".into()));
+    assert_eq!(f, Finish::Failed(AppError::AccessDeniedLogIn));
     assert!(retries.is_empty());
     let (f, _) = run(&base, "notfound", "f.bin", d.path(), None, CancellationToken::new()).await;
-    assert_eq!(f, Finish::Failed("File non trovato".into()));
+    assert_eq!(f, Finish::Failed(AppError::FileNotFound));
 }
 
 #[tokio::test]
@@ -124,7 +124,7 @@ async fn too_long_file_fails_after_retries() {
     let d = tempfile::tempdir().unwrap();
     let body = common::content("ok", "f.bin");
     let (f, retries) = run(&base, "ok", "f.bin", d.path(), Some(body.len() as u64 - 10), CancellationToken::new()).await;
-    assert!(matches!(&f, Finish::Failed(m) if m.starts_with("Dimensione errata")), "{f:?}");
+    assert!(matches!(&f, Finish::Failed(AppError::WrongSize { .. })), "{f:?}");
     assert_eq!(retries.len(), 2);
     assert!(!d.path().join("f.bin").exists() && !d.path().join("f.bin.part").exists());
 }

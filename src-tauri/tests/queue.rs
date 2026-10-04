@@ -1,5 +1,6 @@
 mod common;
 use cain_archive_lib::{
+    error::AppError,
     ia::Auth,
     queue::{Queue, Sink, Snapshot},
     types::{Job, JobStatus, NewFile, Settings},
@@ -7,11 +8,11 @@ use cain_archive_lib::{
 use std::{path::Path, sync::{Arc, Mutex}, time::Duration};
 
 #[derive(Default)]
-struct RecSink { alerts: Mutex<Vec<String>> }
+struct RecSink { alerts: Mutex<Vec<AppError>> }
 impl Sink for RecSink {
     fn changed(&self, _: &[Job], _: bool) {}
     fn progress(&self, _: &Snapshot) {}
-    fn alert(&self, m: &str) { self.alerts.lock().unwrap().push(m.into()); }
+    fn alert(&self, e: &AppError) { self.alerts.lock().unwrap().push(e.clone()); }
 }
 
 fn queue(base: &str, dir: &Path, auth: Option<Auth>) -> Queue {
@@ -30,7 +31,7 @@ async fn wait_for(q: &Queue, what: &str, pred: impl Fn(&[Job]) -> bool) {
         if pred(&q.jobs()) { return; }
         tokio::time::sleep(Duration::from_millis(50)).await;
     }
-    panic!("timeout aspettando {what}: {:?}", q.jobs());
+    panic!("timed out waiting for {what}: {:?}", q.jobs());
 }
 
 fn all(st: JobStatus) -> impl Fn(&[Job]) -> bool {
@@ -44,7 +45,7 @@ async fn downloads_all_and_stops_running() {
     let q = queue(&base, d.path(), None);
     q.enqueue(vec![nf("ok", "a.bin"), nf("ok", "b.bin"), nf("ok", "sub/c.bin")]);
     q.start();
-    wait_for(&q, "tutti Done", all(JobStatus::Done)).await;
+    wait_for(&q, "all Done", all(JobStatus::Done)).await;
     for n in ["a.bin", "b.bin", "sub/c.bin"] {
         assert_eq!(std::fs::read(d.path().join("ok").join(n)).unwrap(), common::content("ok", n));
     }
@@ -98,9 +99,9 @@ async fn denied_fails_and_retry_requeues() {
     let q = queue(&base, d.path(), None);
     q.enqueue(vec![nf("denied", "f.bin")]);
     q.start();
-    wait_for(&q, "Failed", |js| matches!(&js[0].status, JobStatus::Failed { reason } if reason == "Accesso negato: serve accedere")).await;
+    wait_for(&q, "Failed", |js| matches!(&js[0].status, JobStatus::Failed { reason: AppError::AccessDeniedLogIn })).await;
     q.resume_job(q.jobs()[0].id);
-    wait_for(&q, "Failed di nuovo", |js| matches!(js[0].status, JobStatus::Failed { .. })).await;
+    wait_for(&q, "Failed again", |js| matches!(js[0].status, JobStatus::Failed { .. })).await;
 }
 
 #[tokio::test]
@@ -118,7 +119,7 @@ async fn remove_deletes_partial_file() {
         if !part.exists() { return; }
         tokio::time::sleep(Duration::from_millis(50)).await;
     }
-    panic!(".part non cancellato");
+    panic!(".part not deleted");
 }
 
 #[tokio::test]
@@ -159,7 +160,7 @@ async fn colliding_destinations_get_distinct_files() {
     let dests: std::collections::HashSet<String> = js.iter().map(|j| j.dest.to_string_lossy().to_lowercase()).collect();
     assert_eq!(dests.len(), 4, "{:?}", js.iter().map(|j| &j.dest).collect::<Vec<_>>());
     q.start();
-    wait_for(&q, "tutti Done", all(JobStatus::Done)).await;
+    wait_for(&q, "all Done", all(JobStatus::Done)).await;
     for j in q.jobs() {
         assert_eq!(std::fs::read(&j.dest).unwrap(), common::content("ok", &j.name), "{}", j.name);
     }
@@ -170,7 +171,7 @@ struct ChangeSink { changes: Mutex<Vec<(Vec<Job>, bool)>> }
 impl Sink for ChangeSink {
     fn changed(&self, jobs: &[Job], running: bool) { self.changes.lock().unwrap().push((jobs.to_vec(), running)); }
     fn progress(&self, _: &Snapshot) {}
-    fn alert(&self, _: &str) {}
+    fn alert(&self, _: &AppError) {}
 }
 
 /// Every state change rewrites queue.json and redraws the list: with thousands of files it must
@@ -186,11 +187,11 @@ async fn changes_are_batched_and_last_one_is_final() {
     tauri::async_runtime::spawn(q.clone().ticker());
     q.enqueue((0..60).map(|i| nf("ok", &format!("f{i}.bin"))).collect());
     q.start();
-    wait_for(&q, "tutti Done", all(JobStatus::Done)).await;
+    wait_for(&q, "all Done", all(JobStatus::Done)).await;
     wait_for(&q, "running=false", |_| !q.running()).await;
     tokio::time::sleep(Duration::from_millis(600)).await;
     let ch = sink.changes.lock().unwrap();
-    assert!(ch.len() < 30, "{} notifiche per 60 file", ch.len());
+    assert!(ch.len() < 30, "{} notifications for 60 files", ch.len());
     let (jobs, running) = ch.last().unwrap();
     assert!(!running && jobs.len() == 60 && jobs.iter().all(|j| j.status == JobStatus::Done));
 }

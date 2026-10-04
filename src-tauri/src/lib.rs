@@ -1,5 +1,5 @@
 pub mod download;
-pub mod i18n;
+pub mod error;
 pub mod ia;
 pub mod import;
 pub mod library;
@@ -10,6 +10,7 @@ pub mod types;
 mod commands;
 
 use commands::AppState;
+use error::AppError;
 use queue::{Queue, Sink, Snapshot};
 use serde::Serialize;
 use std::{path::PathBuf, sync::{Arc, Mutex}};
@@ -39,8 +40,8 @@ impl Sink for TauriSink {
     fn progress(&self, snap: &Snapshot) {
         let _ = self.app.emit("queue-progress", snap);
     }
-    fn alert(&self, msg: &str) {
-        let _ = self.app.emit("queue-alert", msg);
+    fn alert(&self, err: &AppError) {
+        let _ = self.app.emit("queue-alert", err);
     }
 }
 
@@ -94,7 +95,6 @@ pub fn run() {
             commands::search,
             commands::pick_import_file,
             commands::read_import_file,
-            commands::set_ui_language,
             commands::remove_sources,
             commands::copy_sources,
             commands::move_sources,
@@ -104,5 +104,5 @@ pub fn run() {
             commands::export_collection,
         ])
         .run(tauri::generate_context!())
-        .expect("errore all'avvio di Cain Archive");
+        .expect("error while starting Cain Archive");
 }

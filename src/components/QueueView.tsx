@@ -44,26 +44,26 @@ export function QueueView({ jobs, running, progress, onClose }: Props) {
   return (
     <>
       <div className="row">
-        <span className="section-title">{t("Coda · {n} file", { n: jobs.length })}</span>
+        <span className="section-title">{t("queue.title", { n: jobs.length })}</span>
         {running && progress && progress.total > 0 && (
           <span className="muted small">
-            · {t("{done} di {total}", { done: human(progress.done), total: human(progress.total) })} · {human(progress.speed)}/s
+            · {t("queue.progress", { done: human(progress.done), total: human(progress.total) })} · {human(progress.speed)}/s
             {progress.eta_s != null ? ` · ${duration(progress.eta_s)}` : ""}
           </span>
         )}
         <div className="grow" />
-        {hasDone && <button className="btn small ghost" onClick={() => api.clearCompleted()}>{t("Pulisci completati")}</button>}
+        {hasDone && <button className="btn small ghost" onClick={() => api.clearCompleted()}>{t("queue.clearCompleted")}</button>}
         {running ? (
-          <button className="btn small ghost" onClick={() => api.stop()}>■ Stop</button>
+          <button className="btn small ghost" onClick={() => api.stop()}>■ {t("queue.stop")}</button>
         ) : (
-          <button className="btn small" disabled={!canStart} onClick={() => api.start()}>▶ {t("Avvia")}</button>
+          <button className="btn small" disabled={!canStart} onClick={() => api.start()}>▶ {t("queue.start")}</button>
         )}
-        <button className="icon-btn" title={t("Torna alla ricerca")} onClick={onClose}>✕</button>
+        <button className="icon-btn" title={t("queue.backToSearch")} onClick={onClose}>✕</button>
       </div>
       {running && <div className="bar"><i style={{ width: `${pct}%` }} /></div>}
       <div className={`card queue-list ${drag && drag.over >= jobs.length ? "drop-end" : ""}`} ref={listRef}>
         {jobs.length === 0 ? (
-          <div className="empty">{t("La coda è vuota: cerca dei file e aggiungili con «Aggiungi alla coda».")}</div>
+          <div className="empty">{t("queue.empty")}</div>
         ) : (
           jobs.map((j, i) => (
             <div key={j.id} className={drag && drag.over === i ? "drop-before" : drag?.id === j.id ? "dragged" : ""}>

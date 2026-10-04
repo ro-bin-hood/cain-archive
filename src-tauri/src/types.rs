@@ -1,3 +1,4 @@
+use crate::error::AppError;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
@@ -10,7 +11,7 @@ pub struct Settings {
     pub default_exts: String,
     /// "system" (follows Windows), "light" or "dark".
     pub theme: String,
-    /// "system" (Windows language), "it" or "en".
+    /// "system" (Windows language) or a language code such as "en"; the UI decides which it supports.
     pub language: String,
 }
 
@@ -29,7 +30,10 @@ pub enum JobStatus {
     Retrying { attempt: u32, wait_s: u64 },
     Paused,
     Done,
-    Failed { reason: String },
+    Failed {
+        #[serde(deserialize_with = "crate::error::lenient")]
+        reason: AppError,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
