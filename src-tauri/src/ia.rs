@@ -25,6 +25,7 @@ pub struct FileEntry {
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct Item {
     pub id: String,
+    pub title: Option<String>,
     pub files: Vec<FileEntry>,
 }
 
@@ -137,6 +138,15 @@ pub async fn get(client: &Client, url: &str, headers: &HeaderMap) -> Result<Resp
     Err("troppi redirect".into())
 }
 
+/// `metadata.title` può essere una stringa o una lista di stringhe.
+pub fn title_of(meta: &Value) -> Option<String> {
+    match meta.pointer("/metadata/title")? {
+        Value::String(s) => Some(s.clone()),
+        Value::Array(a) => a.first()?.as_str().map(str::to_string),
+        _ => None,
+    }
+}
+
 pub async fn fetch_item(client: &Client, base: &str, auth: Option<&Auth>, id: &str) -> Result<Item, String> {
     let resp = get(client, &format!("{base}/metadata/{id}"), &auth_headers(auth))
         .await
@@ -153,7 +163,7 @@ pub async fn fetch_item(client: &Client, base: &str, auth: Option<&Auth>, id: &s
             "Item vuoto, inesistente o ad accesso ristretto (prova ad accedere)".into()
         });
     }
-    Ok(Item { id: id.to_string(), files })
+    Ok(Item { id: id.to_string(), title: title_of(&meta), files })
 }
 
 pub fn parse_login_response(v: &Value, email: &str) -> Result<Auth, String> {
@@ -257,5 +267,12 @@ mod tests {
         assert!(trusted(&o, &Url::parse("https://archive.org/f").unwrap()));
         assert!(!trusted(&o, &Url::parse("https://evil-archive.org/f").unwrap()));
         assert!(!trusted(&o, &Url::parse("https://example.com/f").unwrap()));
+    }
+    #[test]
+    fn title_is_read_from_string_or_first_of_list() {
+        assert_eq!(title_of(&json!({"metadata": {"title": "Xbox (A)"}})), Some("Xbox (A)".into()));
+        assert_eq!(title_of(&json!({"metadata": {"title": ["Primo", "Secondo"]}})), Some("Primo".into()));
+        assert_eq!(title_of(&json!({"metadata": {}})), None);
+        assert_eq!(title_of(&json!({})), None);
     }
 }

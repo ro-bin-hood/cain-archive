@@ -7,6 +7,7 @@ async fn fetch_item_lists_files_without_service_files() {
     let item = ia::fetch_item(&ia::client(), &base, None, "nasa").await.unwrap();
     let names: Vec<_> = item.files.iter().map(|f| f.name.as_str()).collect();
     assert_eq!(item.id, "nasa");
+    assert_eq!(item.title.as_deref(), Some("Titolo nasa"));
     assert_eq!(names, ["a.flac", "a.mp3", "sub/b.pdf"]);
 }
 

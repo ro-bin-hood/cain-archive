@@ -106,16 +106,25 @@ fn respond(body: Vec<u8>, range: Option<&str>, slow: bool) -> Response {
     b.body(Body::from_stream(stream)).unwrap()
 }
 
-async fn metadata(Path(item): Path<String>) -> Json<serde_json::Value> {
-    if item == "missing" {
+async fn metadata(State(s): State<Srv>, Path(item): Path<String>) -> Json<serde_json::Value> {
+    let hit = {
+        let mut h = s.hits.lock().unwrap();
+        let c = h.entry(format!("meta:{item}")).or_default();
+        *c += 1;
+        *c
+    };
+    if item == "missing" || (item == "flaky" && hit > 1) {
         return Json(json!({}));
     }
-    Json(json!({"files": [
-        {"name": "a.flac", "size": "1200", "format": "Flac", "source": "original"},
-        {"name": "a.mp3", "size": "300", "format": "VBR MP3", "source": "derivative"},
-        {"name": format!("{item}_meta.xml"), "source": "original"},
-        {"name": "sub/b.pdf", "size": "50", "format": "Text PDF", "source": "original"}
-    ]}))
+    Json(json!({
+        "metadata": {"title": format!("Titolo {item}")},
+        "files": [
+            {"name": "a.flac", "size": "1200", "format": "Flac", "source": "original"},
+            {"name": "a.mp3", "size": "300", "format": "VBR MP3", "source": "derivative"},
+            {"name": format!("{item}_meta.xml"), "source": "original"},
+            {"name": "sub/b.pdf", "size": "50", "format": "Text PDF", "source": "original"}
+        ]
+    }))
 }
 
 #[derive(serde::Deserialize)]
