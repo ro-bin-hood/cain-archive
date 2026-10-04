@@ -1,5 +1,6 @@
 pub mod download;
 pub mod ia;
+pub mod import;
 pub mod library;
 pub mod queue;
 pub mod search;
@@ -90,6 +91,8 @@ pub fn run() {
             commands::close_unsaved,
             commands::save_unsaved,
             commands::search,
+            commands::pick_import_file,
+            commands::export_collection,
         ])
         .run(tauri::generate_context!())
         .expect("errore all'avvio di Cain Archive");

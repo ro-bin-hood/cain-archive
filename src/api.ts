@@ -22,6 +22,7 @@ export type LibraryState = { collections: CollectionView[]; unsaved: SourceMeta[
 export type Scope = { kind: "all" } | { kind: "collection"; id: string } | { kind: "source"; item_id: string } | { kind: "unsaved" };
 export type Hit = { item_id: string; name: string; size: number; original: boolean };
 export type SearchResult = { results: Hit[]; total: number };
+export type ParsedList = { name: string | null; inputs: string[]; invalid: string[] };
 export type NewFile = { item_id: string; name: string; size: number };
 
 export const api = {
@@ -51,6 +52,8 @@ export const api = {
   openUnsaved: (input: string) => invoke<SourceMeta>("open_unsaved", { input }),
   closeUnsaved: (itemId: string) => invoke<LibraryState>("close_unsaved", { itemId }),
   saveUnsaved: (itemId: string, collectionId: string) => invoke<LibraryState>("save_unsaved", { itemId, collectionId }),
+  pickImportFile: () => invoke<ParsedList | null>("pick_import_file"),
+  exportCollection: (id: string) => invoke<string | null>("export_collection", { id }),
   search: (scope: Scope, query: string, originalsOnly: boolean) => invoke<SearchResult>("search", { scope, query, originalsOnly }),
 };
 

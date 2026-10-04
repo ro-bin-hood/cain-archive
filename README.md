@@ -12,6 +12,7 @@ Save the items you use into collections, search file names across all of them, a
 
 - **Collections.** Save the archive.org items you use often ("sources") into named collections. Their file lists are kept locally, so searching is instant.
 - **Combined search.** Search file names across a collection, a single source or all of them at once; every word must match. Exclude a source from its collection's search with one click.
+- **Import / export.** Load a collection from a text or CSV file (one archive.org link or identifier per line, `# name` on top, `title, link` rows accepted) and export any collection in the same format. See [`examples/raccolta-esempio.txt`](examples/raccolta-esempio.txt).
 - **Quick open.** Paste an archive.org link into the search bar to browse an item without saving it; star it to keep it.
 - **Parallel downloads** (1–8) with speed, progress and estimated time.
 - **Resume.** Files download to `name.part` and are renamed only after the size checks out. Interrupted downloads continue via HTTP Range.

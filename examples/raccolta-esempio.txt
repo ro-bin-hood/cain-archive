@@ -1,0 +1,8 @@
+# NASA e film di pubblico dominio
+# Esempio di lista per "Importa raccolta" di Cain Archive.
+# La prima riga che inizia con # è il nome della raccolta; le altre righe con # sono commenti.
+# Una sorgente per riga: link archive.org, identificatore, oppure "titolo, link" (CSV).
+
+https://archive.org/details/nasa
+night-of-the-living-dead_202409
+Opening to Night of the Living Dead (LaserDisc 1994), https://archive.org/details/notld94usldop

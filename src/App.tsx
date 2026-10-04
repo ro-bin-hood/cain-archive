@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useReducer, useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { api, events, type CollectionView, type LibraryState, type Settings } from "./api";
+import { api, events, type CollectionView, type LibraryState, type ParsedList, type Settings } from "./api";
 import { initialQueue, queueReducer, type View } from "./state";
 import { TopBar } from "./components/TopBar";
 import { Sidebar } from "./components/Sidebar";
@@ -15,7 +15,7 @@ import { LoginDialog } from "./components/LoginDialog";
 
 type Dialog =
   | { kind: "settings" } | { kind: "login" }
-  | { kind: "add"; collectionId: string | null }
+  | { kind: "add"; collectionId: string | null; prefill?: ParsedList }
   | { kind: "new" } | { kind: "rename"; collection: CollectionView }
   | { kind: "save"; itemId: string };
 
@@ -99,6 +99,15 @@ export default function App() {
     if (errors.length) setAlert(errors.join("\n"));
   };
 
+  // "Importa raccolta": il file letto in Rust precompila la finestra di aggiunta.
+  const importList = () => {
+    api.pickImportFile().then((list) => {
+      if (!list) return;
+      if (!list.inputs.length) setAlert("Nessuna sorgente valida nel file");
+      else setDialog({ kind: "add", collectionId: null, prefill: list });
+    }).catch((e) => setAlert(String(e)));
+  };
+
   const queueCount = q.jobs.filter((j) => ["Queued", "Downloading", "Retrying"].includes(j.status.kind)).length;
   const close = () => setDialog(null);
 
@@ -115,6 +124,7 @@ export default function App() {
           onLibrary={setLib}
           onError={onError}
           onNewCollection={() => setDialog({ kind: "new" })}
+          onImport={importList}
           onRename={(c) => setDialog({ kind: "rename", collection: c })}
           onAddSources={(id) => setDialog({ kind: "add", collectionId: id })}
           onSaveUnsaved={(id) => setDialog({ kind: "save", itemId: id })}
@@ -147,7 +157,7 @@ export default function App() {
 
       {dialog?.kind === "settings" && <SettingsPanel settings={settings} onChange={updateSettings} onClose={close} />}
       {dialog?.kind === "login" && <LoginDialog onDone={(u) => { setUser(u); close(); }} onClose={close} />}
-      {dialog?.kind === "add" && <AddSourcesDialog lib={lib} initialCollection={dialog.collectionId} onLibrary={setLib} onClose={close} />}
+      {dialog?.kind === "add" && <AddSourcesDialog lib={lib} initialCollection={dialog.collectionId} prefill={dialog.prefill} onLibrary={setLib} onClose={close} />}
       {dialog?.kind === "new" && (
         <NameDialog title="Nuova raccolta" confirm="Crea" onClose={close} onSubmit={async (name) => {
           const st = await api.createCollection(name);

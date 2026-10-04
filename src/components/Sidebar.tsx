@@ -11,12 +11,13 @@ type Props = {
   onLibrary: (s: LibraryState) => void;
   onError: (msg: string) => void;
   onNewCollection: () => void;
+  onImport: () => void;
   onRename: (c: CollectionView) => void;
   onAddSources: (collectionId: string) => void;
   onSaveUnsaved: (itemId: string) => void;
 };
 
-export function Sidebar({ lib, view, queueCount, onSelect, onLibrary, onError, onNewCollection, onRename, onAddSources, onSaveUnsaved }: Props) {
+export function Sidebar({ lib, view, queueCount, onSelect, onLibrary, onError, onNewCollection, onImport, onRename, onAddSources, onSaveUnsaved }: Props) {
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [menu, setMenu] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
@@ -80,7 +81,10 @@ export function Sidebar({ lib, view, queueCount, onSelect, onLibrary, onError, o
 
       <div className="side-head">
         Raccolte
-        <button className="small-btn" title="Nuova raccolta" onClick={onNewCollection}>＋</button>
+        <span className="row" style={{ gap: 2 }}>
+          <button className="small-btn" title="Importa raccolta da file" onClick={onImport}>⤓</button>
+          <button className="small-btn" title="Nuova raccolta" onClick={onNewCollection}>＋</button>
+        </span>
       </div>
       {lib.collections.map((c) => (
         <div key={c.id}>
@@ -96,6 +100,10 @@ export function Sidebar({ lib, view, queueCount, onSelect, onLibrary, onError, o
                 <button onClick={() => { setMenu(null); onAddSources(c.id); }}>Aggiungi sorgenti</button>
                 <button disabled={!c.sources.length} onClick={() => refresh(c.sources.map((s) => s.item_id))}>Aggiorna tutte</button>
                 <button onClick={() => { setMenu(null); onRename(c); }}>Rinomina</button>
+                <button disabled={!c.sources.length} onClick={() => {
+                  setMenu(null);
+                  api.exportCollection(c.id).then((p) => p && onError(`Raccolta esportata in ${p}`)).catch(fail);
+                }}>Esporta…</button>
                 <button className="err" onClick={() => removeCollection(c)}>{confirmDelete === c.id ? "Conferma eliminazione" : "Elimina"}</button>
               </div>
             )}

@@ -1,4 +1,5 @@
 use crate::ia;
+use crate::import::{self, ParsedList};
 use crate::library::{self, Library, LibraryState, Scope, SourceMeta};
 use crate::search::SearchResult;
 use crate::queue::Queue;
@@ -174,4 +175,28 @@ pub fn save_unsaved(state: State<'_, AppState>, item_id: String, collection_id: 
 #[tauri::command(async)]
 pub fn search(state: State<'_, AppState>, scope: Scope, query: String, originals_only: bool) -> Result<SearchResult, String> {
     state.library.lock().unwrap().search(&scope, &query, originals_only)
+}
+
+/// Sceglie un file di lista e lo legge; il nome mancante diventa il nome del file.
+#[tauri::command]
+pub async fn pick_import_file(app: AppHandle) -> Result<Option<ParsedList>, String> {
+    let Some(file) = app.dialog().file().add_filter("Lista di sorgenti", &["txt", "csv"]).blocking_pick_file() else { return Ok(None) };
+    let path = file.into_path().map_err(|e| e.to_string())?;
+    let bytes = std::fs::read(&path).map_err(|e| format!("Impossibile leggere il file: {e}"))?;
+    let mut list = import::parse_list(&String::from_utf8_lossy(&bytes));
+    if list.name.is_none() {
+        list.name = path.file_stem().map(|s| s.to_string_lossy().into_owned());
+    }
+    Ok(Some(list))
+}
+
+/// Salva una raccolta come file di lista; restituisce il percorso scelto (None se annullato).
+#[tauri::command]
+pub async fn export_collection(app: AppHandle, state: State<'_, AppState>, id: String) -> Result<Option<String>, String> {
+    let (name, sources) = state.library.lock().unwrap().export_data(&id)?;
+    let safe: String = name.chars().map(|c| if r#"<>:"/\|?*"#.contains(c) { '_' } else { c }).collect();
+    let Some(file) = app.dialog().file().add_filter("Lista di sorgenti", &["txt"]).set_file_name(format!("{safe}.txt")).blocking_save_file() else { return Ok(None) };
+    let path = file.into_path().map_err(|e| e.to_string())?;
+    std::fs::write(&path, import::format_list(&name, &sources)).map_err(|e| format!("Impossibile salvare il file: {e}"))?;
+    Ok(Some(path.to_string_lossy().into_owned()))
 }

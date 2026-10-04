@@ -343,6 +343,13 @@ impl Library {
         self.link_known(collection_id, item_id).map(|_| ())
     }
 
+    /// Nome e sorgenti (identificatore, titolo) di una raccolta, nell'ordine in cui sono state aggiunte.
+    pub fn export_data(&self, id: &str) -> Result<(String, Vec<(String, Option<String>)>), String> {
+        let c = self.file.collections.iter().find(|c| c.id == id).ok_or_else(|| "Raccolta non trovata".to_string())?;
+        let sources = c.sources.iter().map(|r| (r.item_id.clone(), self.file.sources.get(&r.item_id).and_then(|m| m.title.clone()))).collect();
+        Ok((c.name.clone(), sources))
+    }
+
     pub fn search(&self, scope: &Scope, query: &str, originals_only: bool) -> Result<SearchResult, String> {
         let ids: Vec<&str> = match scope {
             Scope::All => self.file.collections.iter().flat_map(|c| c.sources.iter().map(|r| r.item_id.as_str())).collect(),
@@ -599,6 +606,19 @@ mod tests {
         assert!(w.starts_with("Impossibile leggere la libreria"), "{w}");
         assert!(lib.create_collection("Uno").unwrap_err().starts_with("Libreria in sola lettura"));
         assert!(d.path().join("library.json").is_dir(), "il file originale resta intatto");
+    }
+
+    #[test]
+    fn export_data_lists_sources_in_order() {
+        let d = tempfile::tempdir().unwrap();
+        let mut lib = Library::load(d.path());
+        let c = lib.create_collection("Uno").unwrap();
+        lib.add_fetched(&c, item("b", &["x"])).unwrap();
+        lib.add_fetched(&c, item("a", &["y"])).unwrap();
+        let (name, sources) = lib.export_data(&c).unwrap();
+        assert_eq!(name, "Uno");
+        assert_eq!(sources, vec![("b".to_string(), Some("Titolo b".to_string())), ("a".to_string(), Some("Titolo a".to_string()))]);
+        assert_eq!(lib.export_data("c99").unwrap_err(), "Raccolta non trovata");
     }
 
 }
