@@ -13,12 +13,6 @@ dist-ssr/
 src-tauri/target/
 src-tauri/gen/
 
-# Vecchia versione Python
-old_ied/dist/
-old_ied/build/
-__pycache__/
-*.spec
-
 # Log ed editor
 *.log
 .vscode/*

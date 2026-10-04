@@ -50,15 +50,6 @@ cd src-tauri && cargo test
 
 Settings and queue live in `%APPDATA%\com.cainarchive.app\`. The login session is in `session.bin` in the same folder, encrypted with DPAPI.
 
-## Legacy Python version
-
-`old_ied/` contains the original single-file Tkinter app (`ied.py`). It has the same basic features, without the file picker or the persistent queue. It needs only Python 3.8+ with Tkinter:
-
-```bash
-cd old_ied
-python ied.py
-```
-
 ## Name
 
 A nod to Deckard Cain, the last of the Horadrim and keeper of forgotten lore in *Diablo II*. This project is not affiliated with Blizzard Entertainment.
