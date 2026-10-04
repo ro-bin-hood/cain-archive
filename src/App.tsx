@@ -18,7 +18,8 @@ import { LoginDialog } from "./components/LoginDialog";
 type Dialog =
   | { kind: "settings" } | { kind: "login" }
   | { kind: "add"; collectionId: string | null; prefill?: ParsedList }
-  | { kind: "new"; then?: (collectionId: string) => Promise<void> } | { kind: "rename"; collection: CollectionView }
+  | { kind: "new"; then?: (collectionId: string) => Promise<void> }
+  | { kind: "newsub"; parent: string } | { kind: "rename"; collection: CollectionView }
   | { kind: "save"; itemId: string };
 
 export default function App() {
@@ -63,7 +64,7 @@ export default function App() {
     setReading(true);
     api.readImportFile(next)
       .then((list) => {
-        if (!list.inputs.length) setAlert(t("Nessuna sorgente valida in {file}", { file: next }));
+        if (!list.inputs.length && !list.sections.some((s) => s.inputs.length)) setAlert(t("Nessuna sorgente valida in {file}", { file: next }));
         else setDialog({ kind: "add", collectionId: null, prefill: list });
       })
       .catch((e) => setAlert(String(e)))
@@ -178,7 +179,7 @@ export default function App() {
   const importList = () => {
     api.pickImportFile().then((list) => {
       if (!list) return;
-      if (!list.inputs.length) setAlert(t("Nessuna sorgente valida nel file"));
+      if (!list.inputs.length && !list.sections.some((s) => s.inputs.length)) setAlert(t("Nessuna sorgente valida nel file"));
       else setDialog({ kind: "add", collectionId: null, prefill: list });
     }).catch((e) => setAlert(String(e)));
   };
@@ -202,6 +203,7 @@ export default function App() {
           onNewCollection={() => setDialog({ kind: "new" })}
           onImport={importList}
           onNewCollectionThen={(then) => setDialog({ kind: "new", then })}
+          onNewSubcollection={(parent) => setDialog({ kind: "newsub", parent })}
           onRename={(c) => setDialog({ kind: "rename", collection: c })}
           onAddSources={(id) => setDialog({ kind: "add", collectionId: id })}
           onSaveUnsaved={(id) => setDialog({ kind: "save", itemId: id })}
@@ -245,6 +247,15 @@ export default function App() {
           const id = st.collections[st.collections.length - 1].id;
           if (dialog.then) await dialog.then(id);
           else setView({ kind: "search", scope: { kind: "collection", id } });
+          close();
+        }} />
+      )}
+      {dialog?.kind === "newsub" && (
+        <NameDialog title={t("Nuova sotto-raccolta")} confirm={t("Crea")} onClose={close} onSubmit={async (name) => {
+          const st = await api.createSubcollection(dialog.parent, name);
+          setLib(st);
+          const sub = st.collections.find((c) => c.parent === dialog.parent && c.name.toLowerCase() === name.trim().toLowerCase());
+          if (sub) setView({ kind: "search", scope: { kind: "collection", id: sub.id } });
           close();
         }} />
       )}

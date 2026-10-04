@@ -1,3 +1,5 @@
+import type { CollectionView, LibraryState } from "./api";
+
 export function human(n: number): string {
   const u = ["B", "KB", "MB", "GB", "TB"];
   let i = 0;
@@ -55,4 +57,20 @@ export function tagLabels(ids: string[]): Map<string, string> {
     for (const id of members) out.set(id, id.slice(prefix.length) || id);
   }
   return out;
+}
+
+/** Raccolte in ordine di albero: ogni raccolta seguita dalle sue sotto-raccolte. */
+export function orderedCollections(lib: LibraryState): CollectionView[] {
+  return lib.collections.filter((c) => !c.parent).flatMap((c) => [c, ...lib.collections.filter((k) => k.parent === c.id)]);
+}
+
+/** Nome da mostrare fuori dall'albero: "x360 › DLC" per una sotto-raccolta. */
+export function collectionLabel(lib: LibraryState, c: CollectionView): string {
+  const parent = c.parent ? lib.collections.find((p) => p.id === c.parent) : undefined;
+  return parent ? `${parent.name} › ${c.name}` : c.name;
+}
+
+/** Una raccolta e le sue sotto-raccolte (la ricerca su un padre le include). */
+export function withChildren(lib: LibraryState, id: string): CollectionView[] {
+  return lib.collections.filter((c) => c.id === id || c.parent === id);
 }

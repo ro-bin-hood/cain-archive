@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, type ClipboardEvent, type KeyboardEvent } from "react";
 import { api, type Hit, type Job, type LibraryState, type Scope, type SearchResult, type Sort } from "../api";
-import { extractLinks, formatDate, hitKey, human, tagLabels } from "../util";
+import { collectionLabel, extractLinks, formatDate, hitKey, human, tagLabels, withChildren } from "../util";
 import { ResultRow } from "./ResultRow";
 import { useT } from "../i18n";
 
@@ -82,6 +82,8 @@ export function SearchView({ scope, lib, jobs, query, onQuery, defaultOriginals,
 
   // Intestazione: di cosa si sta parlando.
   const collection = scope.kind === "collection" ? lib.collections.find((c) => c.id === scope.id) : undefined;
+  // Una raccolta padre cerca anche nelle sue sotto-raccolte.
+  const collSources = collection ? withChildren(lib, collection.id).flatMap((c) => c.sources) : [];
   const sourceId = scope.kind === "source" ? scope.item_id : null;
   const source = sourceId
     ? lib.unsaved.find((m) => m.item_id === sourceId) ?? lib.collections.flatMap((c) => c.sources).find((s) => s.item_id === sourceId)
@@ -91,7 +93,7 @@ export function SearchView({ scope, lib, jobs, query, onQuery, defaultOriginals,
   const title =
     scope.kind === "all" ? t("Tutte le sorgenti · {n} sorgenti", { n: allCount })
     : scope.kind === "unsaved" ? t("Non salvate")
-    : collection ? t("{name} · {n} sorgenti", { name: collection.name, n: collection.sources.filter((s) => s.included).length })
+    : collection ? t("{name} · {n} sorgenti", { name: collectionLabel(lib, collection), n: new Set(collSources.filter((s) => s.included).map((s) => s.item_id)).size })
     : source ? source.title || source.item_id : "";
 
   const refresh = async () => {
@@ -104,8 +106,8 @@ export function SearchView({ scope, lib, jobs, query, onQuery, defaultOriginals,
 
   let empty: string | null = null;
   if (!lib.collections.length && !lib.unsaved.length) empty = t("Crea una raccolta o incolla un link archive.org per iniziare");
-  else if (collection && !collection.sources.length) empty = t("Aggiungi sorgenti con ⋯ → Aggiungi sorgenti");
-  else if (collection && !collection.sources.some((s) => s.included)) empty = t("Tutte le sorgenti di questa raccolta sono escluse dalla ricerca: spunta quelle da includere");
+  else if (collection && !collSources.length) empty = t("Aggiungi sorgenti con ⋯ → Aggiungi sorgenti");
+  else if (collection && !collSources.some((s) => s.included)) empty = t("Tutte le sorgenti di questa raccolta sono escluse dalla ricerca: spunta quelle da includere");
   else if (scope.kind === "all" && allCount === 0)
     empty = lib.unsaved.length ? t("Nessuna sorgente salvata: le Non salvate si cercano selezionandole a sinistra") : t("Le raccolte sono vuote: aggiungi sorgenti con ⋯ → Aggiungi sorgenti");
   else if (result && result.total === 0 && (words.length || exts.length)) empty = t("Nessun file corrisponde alla ricerca");
@@ -113,7 +115,7 @@ export function SearchView({ scope, lib, jobs, query, onQuery, defaultOriginals,
   const shown = result?.results ?? [];
   // Sigle calcolate sulle sorgenti dell'ambito (non sui risultati), così non cambiano mentre si scrive.
   const scopeIds =
-    scope.kind === "collection" ? (collection?.sources.filter((s) => s.included).map((s) => s.item_id) ?? [])
+    scope.kind === "collection" ? collSources.filter((s) => s.included).map((s) => s.item_id)
     : scope.kind === "source" ? [scope.item_id]
     : scope.kind === "unsaved" ? lib.unsaved.map((m) => m.item_id)
     : lib.collections.flatMap((c) => c.sources.map((s) => s.item_id));
