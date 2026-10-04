@@ -2,7 +2,7 @@ use crate::ia::Auth;
 use crate::types::{Job, JobStatus, Settings};
 use std::{fs, io, path::Path};
 
-fn write_atomic(path: &Path, data: &[u8]) -> io::Result<()> {
+pub(crate) fn write_atomic(path: &Path, data: &[u8]) -> io::Result<()> {
     if let Some(p) = path.parent() {
         fs::create_dir_all(p)?;
     }

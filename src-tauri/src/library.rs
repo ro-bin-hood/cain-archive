@@ -1,0 +1,513 @@
+use crate::ia::{FileEntry, Item};
+use crate::search::{self, SearchResult, SourceIndex};
+use crate::store::write_atomic;
+use serde::{Deserialize, Serialize};
+use std::collections::{BTreeMap, HashMap, HashSet};
+use std::path::{Path, PathBuf};
+use std::time::{SystemTime, UNIX_EPOCH};
+
+const MISSING: &str = "Elenco mancante, aggiorna la sorgente";
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SourceMeta {
+    pub item_id: String,
+    pub title: Option<String>,
+    pub file_count: usize,
+    pub total_size: u64,
+    pub updated_at: u64,
+    pub error: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+struct SourceRef {
+    item_id: String,
+    included: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+struct Collection {
+    id: String,
+    name: String,
+    sources: Vec<SourceRef>,
+}
+
+#[derive(Debug, Default, Serialize, Deserialize)]
+struct LibraryFile {
+    collections: Vec<Collection>,
+    sources: BTreeMap<String, SourceMeta>,
+    next_id: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct SourceView {
+    #[serde(flatten)]
+    pub meta: SourceMeta,
+    pub included: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct CollectionView {
+    pub id: String,
+    pub name: String,
+    pub sources: Vec<SourceView>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct LibraryState {
+    pub collections: Vec<CollectionView>,
+    pub unsaved: Vec<SourceMeta>,
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(tag = "kind", rename_all = "lowercase")]
+pub enum Scope {
+    All,
+    Collection { id: String },
+    Source { item_id: String },
+    Unsaved,
+}
+
+/// Raccolte, sorgenti salvate (su disco) e Non salvate (solo in memoria), con gli indici di ricerca.
+pub struct Library {
+    dir: PathBuf,
+    file: LibraryFile,
+    index: HashMap<String, SourceIndex>,
+    unsaved: Vec<SourceMeta>,
+    warning: Option<String>,
+}
+
+fn now() -> u64 {
+    SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)
+}
+
+fn meta_of(item: &Item) -> SourceMeta {
+    SourceMeta {
+        item_id: item.id.clone(),
+        title: item.title.clone(),
+        file_count: item.files.len(),
+        total_size: item.files.iter().map(|f| f.size).sum(),
+        updated_at: now(),
+        error: None,
+    }
+}
+
+impl Library {
+    pub fn load(dir: &Path) -> Library {
+        let path = dir.join("library.json");
+        let mut warning = None;
+        let file = match std::fs::read(&path) {
+            Err(_) => LibraryFile::default(),
+            Ok(bytes) => serde_json::from_slice(&bytes).unwrap_or_else(|_| {
+                let _ = std::fs::rename(&path, dir.join("library.bak"));
+                warning = Some("Libreria illeggibile: è stata messa da parte come library.bak".to_string());
+                LibraryFile::default()
+            }),
+        };
+        let mut lib = Library { dir: dir.to_path_buf(), file, index: HashMap::new(), unsaved: Vec::new(), warning };
+        let ids: Vec<String> = lib.file.sources.keys().cloned().collect();
+        for id in ids {
+            let files: Option<Vec<FileEntry>> = std::fs::read(lib.source_path(&id)).ok().and_then(|b| serde_json::from_slice(&b).ok());
+            let files = files.unwrap_or_else(|| {
+                let m = lib.file.sources.get_mut(&id).expect("id preso dalle chiavi");
+                m.file_count = 0;
+                m.total_size = 0;
+                m.error = Some(MISSING.to_string());
+                Vec::new()
+            });
+            lib.index.insert(id.clone(), SourceIndex::new(&id, &files));
+        }
+        lib
+    }
+
+    fn source_path(&self, item_id: &str) -> PathBuf {
+        self.dir.join("sources").join(format!("{item_id}.json"))
+    }
+
+    fn save(&self) -> Result<(), String> {
+        let json = serde_json::to_vec_pretty(&self.file).map_err(|e| e.to_string())?;
+        write_atomic(&self.dir.join("library.json"), &json).map_err(|e| format!("Impossibile salvare la libreria: {e}"))
+    }
+
+    fn save_files(&self, item_id: &str, files: &[FileEntry]) -> Result<(), String> {
+        let json = serde_json::to_vec(files).map_err(|e| e.to_string())?;
+        write_atomic(&self.source_path(item_id), &json).map_err(|e| format!("Impossibile salvare la sorgente: {e}"))
+    }
+
+    pub fn take_warning(&mut self) -> Option<String> {
+        self.warning.take()
+    }
+
+    pub fn state(&self) -> LibraryState {
+        let collections = self
+            .file
+            .collections
+            .iter()
+            .map(|c| CollectionView {
+                id: c.id.clone(),
+                name: c.name.clone(),
+                sources: c
+                    .sources
+                    .iter()
+                    .filter_map(|r| self.file.sources.get(&r.item_id).map(|m| SourceView { meta: m.clone(), included: r.included }))
+                    .collect(),
+            })
+            .collect();
+        LibraryState { collections, unsaved: self.unsaved.clone() }
+    }
+
+    fn clean_name(&self, name: &str, except: Option<&str>) -> Result<String, String> {
+        let n = name.trim();
+        if n.is_empty() {
+            return Err("Nome vuoto".into());
+        }
+        let lower = n.to_lowercase();
+        if self.file.collections.iter().any(|c| Some(c.id.as_str()) != except && c.name.to_lowercase() == lower) {
+            return Err("Esiste già una raccolta con questo nome".into());
+        }
+        Ok(n.to_string())
+    }
+
+    fn collection_mut(&mut self, id: &str) -> Result<&mut Collection, String> {
+        self.file.collections.iter_mut().find(|c| c.id == id).ok_or_else(|| "Raccolta non trovata".to_string())
+    }
+
+    pub fn create_collection(&mut self, name: &str) -> Result<String, String> {
+        let name = self.clean_name(name, None)?;
+        self.file.next_id += 1;
+        let id = format!("c{}", self.file.next_id);
+        self.file.collections.push(Collection { id: id.clone(), name, sources: Vec::new() });
+        self.save()?;
+        Ok(id)
+    }
+
+    pub fn rename_collection(&mut self, id: &str, name: &str) -> Result<(), String> {
+        self.collection_mut(id)?;
+        let name = self.clean_name(name, Some(id))?;
+        self.collection_mut(id)?.name = name;
+        self.save()
+    }
+
+    pub fn delete_collection(&mut self, id: &str) -> Result<(), String> {
+        let before = self.file.collections.len();
+        self.file.collections.retain(|c| c.id != id);
+        if self.file.collections.len() == before {
+            return Err("Raccolta non trovata".into());
+        }
+        self.drop_orphans();
+        self.save()
+    }
+
+    pub fn remove_source(&mut self, collection_id: &str, item_id: &str) -> Result<(), String> {
+        self.collection_mut(collection_id)?.sources.retain(|r| r.item_id != item_id);
+        self.drop_orphans();
+        self.save()
+    }
+
+    pub fn set_included(&mut self, collection_id: &str, item_id: &str, included: bool) -> Result<(), String> {
+        let c = self.collection_mut(collection_id)?;
+        let r = c.sources.iter_mut().find(|r| r.item_id == item_id).ok_or_else(|| "Sorgente non trovata".to_string())?;
+        r.included = included;
+        self.save()
+    }
+
+    /// Cancella le sorgenti salvate che non sono più in nessuna raccolta.
+    fn drop_orphans(&mut self) {
+        let used: HashSet<&str> = self.file.collections.iter().flat_map(|c| c.sources.iter().map(|r| r.item_id.as_str())).collect();
+        let orphans: Vec<String> = self.file.sources.keys().filter(|k| !used.contains(k.as_str())).cloned().collect();
+        for id in orphans {
+            self.file.sources.remove(&id);
+            self.index.remove(&id);
+            let _ = std::fs::remove_file(self.source_path(&id));
+        }
+    }
+
+    pub fn known(&self, item_id: &str) -> Option<SourceMeta> {
+        self.file.sources.get(item_id).cloned().or_else(|| self.unsaved.iter().find(|m| m.item_id == item_id).cloned())
+    }
+
+    fn link(&mut self, collection_id: &str, item_id: &str) -> Result<(), String> {
+        let c = self.collection_mut(collection_id)?;
+        if !c.sources.iter().any(|r| r.item_id == item_id) {
+            c.sources.push(SourceRef { item_id: item_id.to_string(), included: true });
+        }
+        Ok(())
+    }
+
+    /// Collega alla raccolta una sorgente già nota, salvando una Non salvata se serve.
+    /// `None` = sorgente sconosciuta, da scaricare.
+    pub fn link_known(&mut self, collection_id: &str, item_id: &str) -> Result<Option<SourceMeta>, String> {
+        self.collection_mut(collection_id)?;
+        if let Some(pos) = self.unsaved.iter().position(|m| m.item_id == item_id) {
+            let files = self.index.get(item_id).map(|i| i.files.clone()).unwrap_or_default();
+            self.save_files(item_id, &files)?;
+            let meta = self.unsaved.remove(pos);
+            self.file.sources.insert(item_id.to_string(), meta);
+        }
+        let Some(meta) = self.file.sources.get(item_id).cloned() else { return Ok(None) };
+        self.link(collection_id, item_id)?;
+        self.save()?;
+        Ok(Some(meta))
+    }
+
+    pub fn add_fetched(&mut self, collection_id: &str, item: Item) -> Result<SourceMeta, String> {
+        self.collection_mut(collection_id)?;
+        let meta = meta_of(&item);
+        self.save_files(&item.id, &item.files)?;
+        self.index.insert(item.id.clone(), SourceIndex::new(&item.id, &item.files));
+        self.unsaved.retain(|m| m.item_id != item.id);
+        self.file.sources.insert(item.id.clone(), meta.clone());
+        self.link(collection_id, &item.id)?;
+        self.save()?;
+        Ok(meta)
+    }
+
+    pub fn apply_refresh(&mut self, item_id: &str, fetched: Result<Item, String>) -> Result<SourceMeta, String> {
+        let saved = self.file.sources.contains_key(item_id);
+        match fetched {
+            Ok(item) => {
+                let meta = meta_of(&item);
+                if saved {
+                    self.save_files(item_id, &item.files)?;
+                    self.file.sources.insert(item_id.to_string(), meta.clone());
+                    self.save()?;
+                } else if let Some(m) = self.unsaved.iter_mut().find(|m| m.item_id == item_id) {
+                    *m = meta.clone();
+                } else {
+                    return Err("Sorgente non trovata".into());
+                }
+                self.index.insert(item_id.to_string(), SourceIndex::new(item_id, &item.files));
+                Ok(meta)
+            }
+            Err(e) => {
+                if let Some(m) = self.file.sources.get_mut(item_id) {
+                    m.error = Some(e.clone());
+                    self.save()?;
+                } else if let Some(m) = self.unsaved.iter_mut().find(|m| m.item_id == item_id) {
+                    m.error = Some(e.clone());
+                }
+                Err(e)
+            }
+        }
+    }
+
+    pub fn add_unsaved(&mut self, item: Item) -> SourceMeta {
+        let meta = meta_of(&item);
+        self.index.insert(item.id.clone(), SourceIndex::new(&item.id, &item.files));
+        self.unsaved.retain(|m| m.item_id != item.id);
+        self.unsaved.push(meta.clone());
+        meta
+    }
+
+    pub fn close_unsaved(&mut self, item_id: &str) {
+        if let Some(pos) = self.unsaved.iter().position(|m| m.item_id == item_id) {
+            self.unsaved.remove(pos);
+            self.index.remove(item_id);
+        }
+    }
+
+    pub fn save_unsaved(&mut self, item_id: &str, collection_id: &str) -> Result<(), String> {
+        if !self.unsaved.iter().any(|m| m.item_id == item_id) {
+            return Err("Sorgente non trovata".into());
+        }
+        self.link_known(collection_id, item_id).map(|_| ())
+    }
+
+    pub fn search(&self, scope: &Scope, query: &str, originals_only: bool) -> Result<SearchResult, String> {
+        let ids: Vec<&str> = match scope {
+            Scope::All => self.file.collections.iter().flat_map(|c| c.sources.iter().map(|r| r.item_id.as_str())).collect(),
+            Scope::Collection { id } => self
+                .file
+                .collections
+                .iter()
+                .find(|c| &c.id == id)
+                .ok_or_else(|| "Raccolta non trovata".to_string())?
+                .sources
+                .iter()
+                .filter(|r| r.included)
+                .map(|r| r.item_id.as_str())
+                .collect(),
+            Scope::Source { item_id } => {
+                if self.known(item_id).is_none() {
+                    return Err("Sorgente non trovata".into());
+                }
+                vec![item_id.as_str()]
+            }
+            Scope::Unsaved => self.unsaved.iter().map(|m| m.item_id.as_str()).collect(),
+        };
+        let sources: Vec<&SourceIndex> = ids.iter().filter_map(|id| self.index.get(*id)).collect();
+        Ok(search::search(&sources, query, originals_only))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ia::{FileEntry, Item};
+
+    fn item(id: &str, names: &[&str]) -> Item {
+        Item {
+            id: id.into(),
+            title: Some(format!("Titolo {id}")),
+            files: names.iter().map(|n| FileEntry { name: (*n).into(), size: 100, format: String::new(), original: true }).collect(),
+        }
+    }
+    fn total(lib: &Library, scope: Scope) -> usize {
+        lib.search(&scope, "", false).unwrap().total
+    }
+
+    #[test]
+    fn collection_names_are_validated() {
+        let d = tempfile::tempdir().unwrap();
+        let mut lib = Library::load(d.path());
+        let a = lib.create_collection("  Xbox 360 ").unwrap();
+        assert_eq!(lib.state().collections[0].name, "Xbox 360");
+        assert_eq!(lib.create_collection("   ").unwrap_err(), "Nome vuoto");
+        assert_eq!(lib.create_collection("xbox 360").unwrap_err(), "Esiste già una raccolta con questo nome");
+        let b = lib.create_collection("Manuali").unwrap();
+        assert_ne!(a, b);
+        assert_eq!(lib.rename_collection(&b, "XBOX 360").unwrap_err(), "Esiste già una raccolta con questo nome");
+        lib.rename_collection(&a, "Xbox 360 ").unwrap();
+        lib.rename_collection(&b, "Manuali PS2").unwrap();
+        assert_eq!(lib.state().collections[1].name, "Manuali PS2");
+        assert_eq!(lib.rename_collection("c99", "x").unwrap_err(), "Raccolta non trovata");
+        lib.delete_collection(&a).unwrap();
+        assert_eq!(lib.state().collections.len(), 1);
+        assert_eq!(lib.delete_collection(&a).unwrap_err(), "Raccolta non trovata");
+    }
+
+    #[test]
+    fn shared_source_is_stored_once_and_orphans_are_removed() {
+        let d = tempfile::tempdir().unwrap();
+        let mut lib = Library::load(d.path());
+        let c1 = lib.create_collection("Uno").unwrap();
+        let c2 = lib.create_collection("Due").unwrap();
+        lib.add_fetched(&c1, item("a", &["x.zip", "y.zip"])).unwrap();
+        assert_eq!(lib.link_known(&c2, "a").unwrap().map(|m| m.file_count), Some(2));
+        assert_eq!(lib.link_known(&c2, "zzz").unwrap(), None);
+        let file = d.path().join("sources").join("a.json");
+        assert!(file.exists());
+        lib.delete_collection(&c1).unwrap();
+        assert!(file.exists(), "ancora usata da Due");
+        lib.remove_source(&c2, "a").unwrap();
+        assert!(!file.exists(), "orfana: cancellata");
+        assert!(lib.known("a").is_none());
+    }
+
+    #[test]
+    fn adding_twice_to_same_collection_does_not_duplicate() {
+        let d = tempfile::tempdir().unwrap();
+        let mut lib = Library::load(d.path());
+        let c = lib.create_collection("Uno").unwrap();
+        lib.add_fetched(&c, item("a", &["x"])).unwrap();
+        lib.add_fetched(&c, item("a", &["x", "y"])).unwrap();
+        lib.link_known(&c, "a").unwrap();
+        let st = lib.state();
+        assert_eq!(st.collections[0].sources.len(), 1);
+        assert_eq!(st.collections[0].sources[0].meta.file_count, 2);
+    }
+
+    #[test]
+    fn refresh_failure_keeps_old_list_and_records_error() {
+        let d = tempfile::tempdir().unwrap();
+        let mut lib = Library::load(d.path());
+        let c = lib.create_collection("Uno").unwrap();
+        lib.add_fetched(&c, item("a", &["x", "y", "z"])).unwrap();
+        assert_eq!(lib.apply_refresh("a", Err("Errore HTTP 503".into())).unwrap_err(), "Errore HTTP 503");
+        assert_eq!(lib.known("a").unwrap().error.as_deref(), Some("Errore HTTP 503"));
+        assert_eq!(total(&lib, Scope::All), 3);
+        let m = lib.apply_refresh("a", Ok(item("a", &["w"]))).unwrap();
+        assert_eq!((m.file_count, m.error), (1, None));
+        assert_eq!(total(&lib, Scope::All), 1);
+    }
+
+    #[test]
+    fn unsaved_sources_open_close_and_save() {
+        let d = tempfile::tempdir().unwrap();
+        let mut lib = Library::load(d.path());
+        let c = lib.create_collection("Uno").unwrap();
+        lib.add_unsaved(item("u", &["p", "q"]));
+        lib.add_unsaved(item("v", &["r"]));
+        assert_eq!(lib.state().unsaved.len(), 2);
+        assert_eq!(total(&lib, Scope::Unsaved), 3);
+        assert_eq!(total(&lib, Scope::Source { item_id: "u".into() }), 2);
+        assert!(!d.path().join("sources").join("u.json").exists(), "le Non salvate non si scrivono su disco");
+        lib.close_unsaved("v");
+        assert_eq!(lib.state().unsaved.len(), 1);
+        lib.save_unsaved("u", &c).unwrap();
+        let st = lib.state();
+        assert!(st.unsaved.is_empty());
+        assert_eq!(st.collections[0].sources[0].meta.item_id, "u");
+        assert!(d.path().join("sources").join("u.json").exists());
+        assert_eq!(total(&lib, Scope::Collection { id: c.clone() }), 2);
+        assert_eq!(lib.save_unsaved("nope", &c).unwrap_err(), "Sorgente non trovata");
+    }
+
+    #[test]
+    fn scopes_respect_inclusion_and_deduplicate() {
+        let d = tempfile::tempdir().unwrap();
+        let mut lib = Library::load(d.path());
+        let c1 = lib.create_collection("Uno").unwrap();
+        let c2 = lib.create_collection("Due").unwrap();
+        lib.add_fetched(&c1, item("a", &["1", "2"])).unwrap();
+        lib.add_fetched(&c1, item("b", &["3"])).unwrap();
+        lib.link_known(&c2, "b").unwrap();
+        lib.set_included(&c1, "b", false).unwrap();
+        lib.add_unsaved(item("u", &["4"]));
+        assert_eq!(total(&lib, Scope::All), 3, "All ignora le esclusioni e conta b una volta");
+        assert_eq!(total(&lib, Scope::Collection { id: c1.clone() }), 2);
+        assert_eq!(total(&lib, Scope::Collection { id: c2 }), 1);
+        assert_eq!(total(&lib, Scope::Source { item_id: "b".into() }), 1);
+        assert_eq!(total(&lib, Scope::Unsaved), 1);
+        assert_eq!(lib.search(&Scope::Collection { id: "c99".into() }, "", false).unwrap_err(), "Raccolta non trovata");
+        assert_eq!(lib.search(&Scope::Source { item_id: "zz".into() }, "", false).unwrap_err(), "Sorgente non trovata");
+        assert_eq!(lib.set_included(&c1, "zz", true).unwrap_err(), "Sorgente non trovata");
+    }
+
+    #[test]
+    fn library_survives_reload() {
+        let d = tempfile::tempdir().unwrap();
+        let (c, before) = {
+            let mut lib = Library::load(d.path());
+            let c = lib.create_collection("Uno").unwrap();
+            lib.add_fetched(&c, item("a", &["x", "y"])).unwrap();
+            lib.add_fetched(&c, item("b", &["z"])).unwrap();
+            lib.set_included(&c, "b", false).unwrap();
+            lib.add_unsaved(item("u", &["w"]));
+            (c, lib.state())
+        };
+        let mut lib = Library::load(d.path());
+        let after = lib.state();
+        assert_eq!(after.collections, before.collections);
+        assert!(after.unsaved.is_empty(), "le Non salvate non sopravvivono alla chiusura");
+        assert_eq!(total(&lib, Scope::Collection { id: c }), 2);
+        assert_eq!(lib.take_warning(), None);
+        let c2 = lib.create_collection("Due").unwrap();
+        assert!(!before.collections.iter().any(|x| x.id == c2), "gli id non si riusano");
+    }
+
+    #[test]
+    fn corrupt_library_is_moved_aside() {
+        let d = tempfile::tempdir().unwrap();
+        std::fs::write(d.path().join("library.json"), "{rotto").unwrap();
+        let mut lib = Library::load(d.path());
+        assert!(lib.state().collections.is_empty());
+        assert_eq!(lib.take_warning().as_deref(), Some("Libreria illeggibile: è stata messa da parte come library.bak"));
+        assert_eq!(lib.take_warning(), None);
+        assert_eq!(std::fs::read_to_string(d.path().join("library.bak")).unwrap(), "{rotto");
+    }
+
+    #[test]
+    fn missing_source_file_is_flagged() {
+        let d = tempfile::tempdir().unwrap();
+        {
+            let mut lib = Library::load(d.path());
+            let c = lib.create_collection("Uno").unwrap();
+            lib.add_fetched(&c, item("a", &["x"])).unwrap();
+        }
+        std::fs::remove_file(d.path().join("sources").join("a.json")).unwrap();
+        let lib = Library::load(d.path());
+        let m = lib.known("a").unwrap();
+        assert_eq!((m.file_count, m.error.as_deref()), (0, Some("Elenco mancante, aggiorna la sorgente")));
+        assert_eq!(total(&lib, Scope::All), 0);
+    }
+}
