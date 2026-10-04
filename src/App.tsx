@@ -18,7 +18,7 @@ import { LoginDialog } from "./components/LoginDialog";
 type Dialog =
   | { kind: "settings" } | { kind: "login" }
   | { kind: "add"; collectionId: string | null; prefill?: ParsedList }
-  | { kind: "new" } | { kind: "rename"; collection: CollectionView }
+  | { kind: "new"; then?: (collectionId: string) => Promise<void> } | { kind: "rename"; collection: CollectionView }
   | { kind: "save"; itemId: string };
 
 export default function App() {
@@ -201,6 +201,7 @@ export default function App() {
           onError={onError}
           onNewCollection={() => setDialog({ kind: "new" })}
           onImport={importList}
+          onNewCollectionThen={(then) => setDialog({ kind: "new", then })}
           onRename={(c) => setDialog({ kind: "rename", collection: c })}
           onAddSources={(id) => setDialog({ kind: "add", collectionId: id })}
           onSaveUnsaved={(id) => setDialog({ kind: "save", itemId: id })}
@@ -241,7 +242,9 @@ export default function App() {
         <NameDialog title={t("Nuova raccolta")} confirm={t("Crea")} onClose={close} onSubmit={async (name) => {
           const st = await api.createCollection(name);
           setLib(st);
-          setView({ kind: "search", scope: { kind: "collection", id: st.collections[st.collections.length - 1].id } });
+          const id = st.collections[st.collections.length - 1].id;
+          if (dialog.then) await dialog.then(id);
+          else setView({ kind: "search", scope: { kind: "collection", id } });
           close();
         }} />
       )}

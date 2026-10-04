@@ -59,6 +59,9 @@ export const api = {
   readImportFile: (path: string) => invoke<ParsedList>("read_import_file", { path }),
   pickImportFile: () => invoke<ParsedList | null>("pick_import_file"),
   exportCollection: (id: string) => invoke<string | null>("export_collection", { id }),
+  removeSources: (collectionId: string, itemIds: string[]) => invoke<LibraryState>("remove_sources", { collectionId, itemIds }),
+  copySources: (to: string, itemIds: string[]) => invoke<LibraryState>("copy_sources", { to, itemIds }),
+  moveSources: (from: string, to: string, itemIds: string[]) => invoke<LibraryState>("move_sources", { from, to, itemIds }),
   search: (scope: Scope, query: string, filters: Filters) => invoke<SearchResult>("search", { scope, query, filters }),
 };
 

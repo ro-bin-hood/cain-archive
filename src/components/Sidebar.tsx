@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState, type MouseEvent } from "react";
 import { api, type CollectionView, type LibraryState, type SourceMeta } from "../api";
 import type { View } from "../state";
 import { scopeKey } from "../state";
@@ -17,14 +17,61 @@ type Props = {
   onRename: (c: CollectionView) => void;
   onAddSources: (collectionId: string) => void;
   onSaveUnsaved: (itemId: string) => void;
+  /** Chiede il nome di una nuova raccolta, la crea e poi esegue `then` con il suo id. */
+  onNewCollectionThen: (then: (collectionId: string) => Promise<void>) => void;
 };
 
-export function Sidebar({ width, lib, view, queueCount, onSelect, onLibrary, onError, onNewCollection, onImport, onRename, onAddSources, onSaveUnsaved }: Props) {
+/** Sorgenti selezionate (sempre dentro una sola raccolta) e menu contestuale aperto. */
+type Picked = { cid: string; ids: Set<string>; anchor: string };
+type Ctx = { x: number; y: number; cid: string; ids: string[] };
+
+export function Sidebar({ width, lib, view, queueCount, onSelect, onLibrary, onError, onNewCollection, onImport, onRename, onAddSources, onSaveUnsaved, onNewCollectionThen }: Props) {
   const { t } = useT();
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [menu, setMenu] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState<Set<string>>(new Set());
+  const [picked, setPicked] = useState<Picked | null>(null);
+  const [ctx, setCtx] = useState<Ctx | null>(null);
+
+  // Esc chiude il menu contestuale e svuota la selezione.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") { setCtx(null); setPicked(null); } };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  // Clic su una sorgente: Ctrl aggiunge/toglie, Shift seleziona l'intervallo dall'ultima cliccata,
+  // il clic semplice apre la sorgente e la rende l'unica selezionata.
+  const clickSource = (e: MouseEvent, c: CollectionView, id: string) => {
+    if ((e.ctrlKey || e.metaKey) && picked?.cid === c.id) {
+      const ids = new Set(picked.ids);
+      if (ids.has(id)) ids.delete(id); else ids.add(id);
+      setPicked({ cid: c.id, ids, anchor: id });
+      return;
+    }
+    if (e.shiftKey && picked?.cid === c.id) {
+      const order = c.sources.map((s) => s.item_id);
+      const [a, b] = [order.indexOf(picked.anchor), order.indexOf(id)].sort((x, y) => x - y);
+      setPicked({ cid: c.id, ids: new Set(order.slice(a, b + 1)), anchor: picked.anchor });
+      return;
+    }
+    setPicked({ cid: c.id, ids: new Set([id]), anchor: id });
+    select({ kind: "search", scope: { kind: "source", item_id: id } });
+  };
+
+  const openCtx = (e: MouseEvent, c: CollectionView, id: string) => {
+    e.preventDefault();
+    let ids = picked?.cid === c.id && picked.ids.has(id) ? picked.ids : new Set([id]);
+    if (ids !== picked?.ids) setPicked({ cid: c.id, ids, anchor: id });
+    setMenu(null);
+    setCtx({ x: e.clientX, y: e.clientY, cid: c.id, ids: [...ids] });
+  };
+
+  const bulk = async (op: () => Promise<LibraryState>) => {
+    setCtx(null);
+    try { onLibrary(await op()); setPicked(null); } catch (e) { fail(e); }
+  };
 
   const current = view.kind === "search" ? scopeKey(view.scope) : "queue";
   const select = (v: View) => { setMenu(null); onSelect(v); };
@@ -114,7 +161,8 @@ export function Sidebar({ width, lib, view, queueCount, onSelect, onLibrary, onE
           {!collapsed.has(c.id) && c.sources.map((s) => {
             const key = `${c.id}:${s.item_id}`;
             return (
-              <div key={key} className={`side-item sub ${current === `s:${s.item_id}` ? "on" : ""}`} onClick={() => select({ kind: "search", scope: { kind: "source", item_id: s.item_id } })}>
+              <div key={key} className={`side-item sub ${current === `s:${s.item_id}` ? "on" : ""} ${picked?.cid === c.id && picked.ids.has(s.item_id) && picked.ids.size > 1 ? "picked" : ""}`}
+                onClick={(e) => clickSource(e, c, s.item_id)} onContextMenu={(e) => openCtx(e, c, s.item_id)}>
                 <input type="checkbox" className="check" title={t("Includi nella ricerca della raccolta")} checked={s.included} onClick={(e) => e.stopPropagation()}
                   onChange={(e) => api.setIncluded(c.id, s.item_id, e.target.checked).then(onLibrary).catch(fail)} />
                 <span className={`grow name ${s.included ? "" : "muted"}`} title={s.item_id}>{sourceLabel(s)}</span>
@@ -143,6 +191,23 @@ export function Sidebar({ width, lib, view, queueCount, onSelect, onLibrary, onE
       <div className={`side-item ${current === "queue" ? "on" : ""}`} onClick={() => select({ kind: "queue" })}>
         ⬇ {t("Coda")} <span className="grow" />{queueCount > 0 && <span className="badge">{queueCount}</span>}
       </div>
+      {ctx && (
+        <div className="ctx-backdrop" onClick={() => setCtx(null)} onContextMenu={(e) => { e.preventDefault(); setCtx(null); }}>
+          <div className="menu ctx-menu" style={{ left: Math.min(ctx.x, window.innerWidth - 240), top: Math.min(ctx.y, window.innerHeight - 320) }} onClick={(e) => e.stopPropagation()}>
+            <button onClick={() => bulk(() => api.removeSources(ctx.cid, ctx.ids))}>{t("Togli dalla raccolta ({n})", { n: ctx.ids.length })}</button>
+            <div className="menu-head">{t("Sposta in")}</div>
+            {lib.collections.filter((c) => c.id !== ctx.cid).map((c) => (
+              <button key={`m${c.id}`} onClick={() => bulk(() => api.moveSources(ctx.cid, c.id, ctx.ids))}>{c.name}</button>
+            ))}
+            <button className="muted" onClick={() => { const { cid, ids } = ctx; setCtx(null); onNewCollectionThen(async (to) => { onLibrary(await api.moveSources(cid, to, ids)); setPicked(null); }); }}>＋ {t("Nuova raccolta…")}</button>
+            <div className="menu-head">{t("Copia in")}</div>
+            {lib.collections.filter((c) => c.id !== ctx.cid).map((c) => (
+              <button key={`c${c.id}`} onClick={() => bulk(() => api.copySources(c.id, ctx.ids))}>{c.name}</button>
+            ))}
+            <button className="muted" onClick={() => { const { ids } = ctx; setCtx(null); onNewCollectionThen(async (to) => { onLibrary(await api.copySources(to, ids)); setPicked(null); }); }}>＋ {t("Nuova raccolta…")}</button>
+          </div>
+        </div>
+      )}
     </nav>
   );
 }
