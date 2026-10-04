@@ -23,8 +23,9 @@ export function extractLinks(text: string): string[] {
   return (text.match(/https?:\/\/(?:www\.)?archive\.org\/\S+/g) ?? []).map((l) => l.replace(/[.,;:!?)\]}>"']+$/, ""));
 }
 
-export function formatDate(unix: number): string {
-  return unix ? new Date(unix * 1000).toLocaleDateString("it-IT", { day: "numeric", month: "short", year: "numeric" }) : "mai";
+/** Data breve nella lingua dell'interfaccia; "" se manca (il chiamante mostra "mai"). */
+export function formatDate(unix: number, locale: string): string {
+  return unix ? new Date(unix * 1000).toLocaleDateString(locale, { day: "numeric", month: "short", year: "numeric" }) : "";
 }
 
 export function hitKey(h: { item_id: string; name: string }): string {

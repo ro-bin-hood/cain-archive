@@ -11,7 +11,8 @@ export type JobStatus =
   | { kind: "Failed"; reason: string };
 export type Job = { id: number; item_id: string; name: string; size: number; dest: string; status: JobStatus };
 export type Theme = "system" | "light" | "dark";
-export type Settings = { out_dir: string; workers: number; default_originals: boolean; default_exts: string; theme: Theme };
+export type Language = "system" | "it" | "en";
+export type Settings = { out_dir: string; workers: number; default_originals: boolean; default_exts: string; theme: Theme; language: Language };
 export type FullState = { settings: Settings; user: string | null; jobs: Job[]; running: boolean };
 export type JobProgress = { id: number; done: number; total: number | null; speed: number };
 export type Snapshot = { jobs: JobProgress[]; done: number; total: number; speed: number; eta_s: number | null };
@@ -54,6 +55,7 @@ export const api = {
   openUnsaved: (input: string) => invoke<SourceMeta>("open_unsaved", { input }),
   closeUnsaved: (itemId: string) => invoke<LibraryState>("close_unsaved", { itemId }),
   saveUnsaved: (itemId: string, collectionId: string) => invoke<LibraryState>("save_unsaved", { itemId, collectionId }),
+  setUiLanguage: (lang: "it" | "en") => invoke<void>("set_ui_language", { lang }),
   readImportFile: (path: string) => invoke<ParsedList>("read_import_file", { path }),
   pickImportFile: () => invoke<ParsedList | null>("pick_import_file"),
   exportCollection: (id: string) => invoke<string | null>("export_collection", { id }),

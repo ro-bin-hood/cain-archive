@@ -3,6 +3,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { api, events, type CollectionView, type LibraryState, type ParsedList, type Settings } from "./api";
 import { initialQueue, queueReducer, type View } from "./state";
+import { LangContext, resolveLang, translate } from "./i18n";
 import { TopBar } from "./components/TopBar";
 import { Sidebar } from "./components/Sidebar";
 import { SearchView } from "./components/SearchView";
@@ -36,6 +37,7 @@ export default function App() {
     try { return Number(localStorage.getItem("sidebarWidth")) || 250; } catch { return 250; }
   });
   const dialogRef = useRef<Dialog | null>(null);
+  const langRef = useRef<"it" | "en">("it");
   dialogRef.current = dialog;
 
   // File di lista trascinati sulla finestra: si importano uno alla volta, ognuno nella sua finestra.
@@ -47,7 +49,7 @@ export default function App() {
       else if (p.type === "drop") {
         setDragging(false);
         const lists = p.paths.filter((f) => /\.(txt|csv)$/i.test(f));
-        if (lists.length < p.paths.length) setAlert("Si possono importare solo file .txt o .csv");
+        if (lists.length < p.paths.length) setAlert(translate(langRef.current, "Si possono importare solo file .txt o .csv"));
         if (lists.length && !dialogRef.current) setPending(lists);
       }
     });
@@ -61,7 +63,7 @@ export default function App() {
     setReading(true);
     api.readImportFile(next)
       .then((list) => {
-        if (!list.inputs.length) setAlert(`Nessuna sorgente valida in ${next}`);
+        if (!list.inputs.length) setAlert(t("Nessuna sorgente valida in {file}", { file: next }));
         else setDialog({ kind: "add", collectionId: null, prefill: list });
       })
       .catch((e) => setAlert(String(e)))
@@ -142,6 +144,15 @@ export default function App() {
 
   const onError = useCallback((msg: string) => setAlert(msg), []);
 
+  // Lingua: "Automatico" segue il sistema; la lingua effettiva va anche al motore per i suoi messaggi.
+  const lang = resolveLang(settings?.language ?? "system");
+  const t = (it: string, vars?: Record<string, string | number>) => translate(lang, it, vars);
+  langRef.current = lang;
+  useEffect(() => {
+    document.documentElement.lang = lang;
+    api.setUiLanguage(lang).catch(() => {});
+  }, [lang]);
+
   const updateSettings = (s: Settings) => {
     setSettings(s);
     api.setSettings(s).catch((e) => setAlert(String(e)));
@@ -167,7 +178,7 @@ export default function App() {
   const importList = () => {
     api.pickImportFile().then((list) => {
       if (!list) return;
-      if (!list.inputs.length) setAlert("Nessuna sorgente valida nel file");
+      if (!list.inputs.length) setAlert(t("Nessuna sorgente valida nel file"));
       else setDialog({ kind: "add", collectionId: null, prefill: list });
     }).catch((e) => setAlert(String(e)));
   };
@@ -177,7 +188,7 @@ export default function App() {
 
   if (!settings) return null;
   return (
-    <>
+    <LangContext.Provider value={lang}>
       <TopBar user={user} onLogin={() => setDialog({ kind: "login" })} onLogout={() => { api.logout(); setUser(null); }} onSettings={() => setDialog({ kind: "settings" })} />
       <div className="layout">
         <Sidebar
@@ -194,12 +205,12 @@ export default function App() {
           onAddSources={(id) => setDialog({ kind: "add", collectionId: id })}
           onSaveUnsaved={(id) => setDialog({ kind: "save", itemId: id })}
         />
-        <div className="resizer" title="Trascina per ridimensionare · doppio clic per ripristinare" onMouseDown={startResize} onDoubleClick={() => saveWidth(250)} />
+        <div className="resizer" title={t("Trascina per ridimensionare · doppio clic per ripristinare")} onMouseDown={startResize} onDoubleClick={() => saveWidth(250)} />
         <main className="main-pane">
           {alert && (
             <div className="banner row">
               <span className="grow" style={{ whiteSpace: "pre-line" }}>{alert}</span>
-              <button className="icon-btn" title="Chiudi" onClick={() => setAlert(null)}>✕</button>
+              <button className="icon-btn" title={t("Chiudi")} onClick={() => setAlert(null)}>✕</button>
             </div>
           )}
           {view.kind === "queue" ? (
@@ -220,14 +231,14 @@ export default function App() {
           )}
         </main>
       </div>
-      {dragging && <div className="drop-overlay"><div>⤓ Rilascia per importare la raccolta</div></div>}
+      {dragging && <div className="drop-overlay"><div>⤓ {t("Rilascia per importare la raccolta")}</div></div>}
       <QueueStrip jobs={q.jobs} running={q.running} progress={q.progress} onOpen={() => setView({ kind: "queue" })} />
 
       {dialog?.kind === "settings" && <SettingsPanel settings={settings} onChange={updateSettings} onClose={close} />}
       {dialog?.kind === "login" && <LoginDialog onDone={(u) => { setUser(u); close(); }} onClose={close} />}
       {dialog?.kind === "add" && <AddSourcesDialog lib={lib} initialCollection={dialog.collectionId} prefill={dialog.prefill} onLibrary={setLib} onClose={close} />}
       {dialog?.kind === "new" && (
-        <NameDialog title="Nuova raccolta" confirm="Crea" onClose={close} onSubmit={async (name) => {
+        <NameDialog title={t("Nuova raccolta")} confirm={t("Crea")} onClose={close} onSubmit={async (name) => {
           const st = await api.createCollection(name);
           setLib(st);
           setView({ kind: "search", scope: { kind: "collection", id: st.collections[st.collections.length - 1].id } });
@@ -235,7 +246,7 @@ export default function App() {
         }} />
       )}
       {dialog?.kind === "rename" && (
-        <NameDialog title="Rinomina raccolta" initial={dialog.collection.name} confirm="Rinomina" onClose={close} onSubmit={async (name) => {
+        <NameDialog title={t("Rinomina raccolta")} initial={dialog.collection.name} confirm={t("Rinomina")} onClose={close} onSubmit={async (name) => {
           setLib(await api.renameCollection(dialog.collection.id, name));
           close();
         }} />
@@ -249,6 +260,6 @@ export default function App() {
             close();
           }} />
       )}
-    </>
+    </LangContext.Provider>
   );
 }

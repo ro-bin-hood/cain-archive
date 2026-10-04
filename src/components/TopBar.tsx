@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import logo from "../assets/logo.svg";
+import { useT } from "../i18n";
 
 type Props = { user: string | null; onLogin: () => void; onLogout: () => void; onSettings: () => void };
 
@@ -10,6 +11,7 @@ const win = getCurrentWindow();
  *  la finestra (doppio clic = ingrandisci), i pulsanti a destra sostituiscono quelli di sistema. */
 export function TopBar({ user, onLogin, onLogout, onSettings }: Props) {
   const [menu, setMenu] = useState(false);
+  const { t } = useT();
   return (
     <header className="titlebar" data-tauri-drag-region>
       <img src={logo} className="logo" alt="" data-tauri-drag-region />
@@ -19,23 +21,23 @@ export function TopBar({ user, onLogin, onLogout, onSettings }: Props) {
         {user ? (
           <button className="pill" onClick={() => setMenu((m) => !m)}>● {user}</button>
         ) : (
-          <button className="pill" onClick={onLogin}>Accedi</button>
+          <button className="pill" onClick={onLogin}>{t("Accedi")}</button>
         )}
         {menu && user && (
           <div className="menu">
-            <button onClick={() => { setMenu(false); onLogout(); }}>Esci</button>
+            <button onClick={() => { setMenu(false); onLogout(); }}>{t("Esci")}</button>
           </div>
         )}
       </div>
-      <button className="icon-btn" title="Impostazioni" onClick={onSettings}>⚙</button>
+      <button className="icon-btn" title={t("Impostazioni")} onClick={onSettings}>⚙</button>
       <div className="win-controls">
-        <button title="Riduci a icona" onClick={() => win.minimize()}>
+        <button title={t("Riduci a icona")} onClick={() => win.minimize()}>
           <svg width="10" height="10" viewBox="0 0 10 10"><path d="M0 5h10" stroke="currentColor" /></svg>
         </button>
-        <button title="Ingrandisci" onClick={() => win.toggleMaximize()}>
+        <button title={t("Ingrandisci")} onClick={() => win.toggleMaximize()}>
           <svg width="10" height="10" viewBox="0 0 10 10"><rect x="0.5" y="0.5" width="9" height="9" fill="none" stroke="currentColor" /></svg>
         </button>
-        <button className="close" title="Chiudi" onClick={() => win.close()}>
+        <button className="close" title={t("Chiudi")} onClick={() => win.close()}>
           <svg width="10" height="10" viewBox="0 0 10 10"><path d="M0 0l10 10M10 0L0 10" stroke="currentColor" /></svg>
         </button>
       </div>

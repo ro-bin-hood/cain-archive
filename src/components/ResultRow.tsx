@@ -1,6 +1,7 @@
 import { memo, type ReactNode } from "react";
 import type { Hit } from "../api";
 import { human } from "../util";
+import { useT } from "../i18n";
 
 /** Il nome con le parole cercate evidenziate (senza distinguere maiuscole e minuscole). */
 function highlight(name: string, words: string[]): ReactNode {
@@ -25,12 +26,13 @@ function highlight(name: string, words: string[]): ReactNode {
 type Props = { hit: Hit; tag: string; checked: boolean; words: string[]; onToggle: (h: Hit) => void };
 
 function Row({ hit, tag, checked, words, onToggle }: Props) {
+  const { t } = useT();
   return (
     <label className="item-row" style={{ cursor: "pointer" }}>
       <input type="checkbox" className="check" checked={checked} onChange={() => onToggle(hit)} />
       <span className={`grow name ${hit.original ? "" : "muted"}`} title={hit.name}>{highlight(hit.name, words)}</span>
-      {hit.local === "downloaded" && <span className="small ok" title="Già presente nella cartella di destinazione">✔ scaricato</span>}
-      {hit.local === "queued" && <span className="small muted" title="Già nella coda">in coda</span>}
+      {hit.local === "downloaded" && <span className="small ok" title={t("Già presente nella cartella di destinazione")}>✔ {t("scaricato")}</span>}
+      {hit.local === "queued" && <span className="small muted" title={t("Già nella coda")}>{t("in coda")}</span>}
       <span className="src" title={hit.item_id}>{tag}</span>
       <span className="muted small size">{hit.size ? human(hit.size) : "?"}</span>
     </label>

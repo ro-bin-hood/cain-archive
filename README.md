@@ -12,14 +12,14 @@ Save the items you use into collections, search file names across all of them, a
 
 - **Collections.** Save the archive.org items you use often ("sources") into named collections. Their file lists are kept locally, so searching is instant.
 - **Combined search.** Search file names across a collection, a single source or all of them at once; every word must match. Exclude a source from its collection's search with one click.
-- **Import / export.** Load a collection from a text or CSV file (one archive.org link or identifier per line, `# name` on top, `title, link` rows accepted) and export any collection in the same format. See [`examples/raccolta-esempio.txt`](examples/raccolta-esempio.txt).
+- **Import / export.** Load a collection from a text or CSV file (one archive.org link or identifier per line, `# name` on top, `title, link` rows accepted) and export any collection in the same format. See [`examples/collection-example.txt`](examples/collection-example.txt).
 - **Quick open.** Paste an archive.org link into the search bar to browse an item without saving it; star it to keep it.
 - **Parallel downloads** (1–8) with speed, progress and estimated time.
 - **Resume.** Files download to `name.part` and are renamed only after the size checks out. Interrupted downloads continue via HTTP Range.
 - **Persistent queue.** Close the app mid-download, reopen it, press ▶ and it picks up from where it was.
 - **Retries.** Up to 3 attempts per file with increasing waits, honoring `Retry-After` when the server is busy.
 - **Login** for items that need an archive.org account. Your password is never stored; the session is kept encrypted for your Windows user only (DPAPI).
-- **Light, dark or automatic theme.**
+- **Light, dark or automatic theme; Italian or English interface** (follows Windows by default).
 - **Windows-safe file names.** Forbidden characters, reserved names (`CON`, `aux.h`…) and path traversal are handled. Names that would collide get ` (2)`, ` (3)`…
 
 Accepted inputs, one per line:

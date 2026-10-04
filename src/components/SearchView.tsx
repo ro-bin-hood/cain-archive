@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState, type ClipboardEvent, type Ke
 import { api, type Hit, type Job, type LibraryState, type Scope, type SearchResult, type Sort } from "../api";
 import { extractLinks, formatDate, hitKey, human, tagLabels } from "../util";
 import { ResultRow } from "./ResultRow";
+import { useT } from "../i18n";
 
 type Props = {
   scope: Scope;
@@ -17,6 +18,7 @@ type Props = {
 };
 
 export function SearchView({ scope, lib, jobs, query, onQuery, defaultOriginals, onLibrary, onOpenLinks, onSaveUnsaved, onError }: Props) {
+  const { t, locale } = useT();
   const [originals, setOriginals] = useState(defaultOriginals);
   const [exts, setExts] = useState<string[]>([]);
   const [sort, setSort] = useState<Sort>("name");
@@ -90,9 +92,9 @@ export function SearchView({ scope, lib, jobs, query, onQuery, defaultOriginals,
   const unsaved = !!sourceId && lib.unsaved.some((m) => m.item_id === sourceId);
   const allCount = new Set(lib.collections.flatMap((c) => c.sources.map((s) => s.item_id))).size;
   const title =
-    scope.kind === "all" ? `Tutte le sorgenti · ${allCount} sorgenti`
-    : scope.kind === "unsaved" ? "Non salvate"
-    : collection ? `${collection.name} · ${collection.sources.filter((s) => s.included).length} sorgenti`
+    scope.kind === "all" ? t("Tutte le sorgenti · {n} sorgenti", { n: allCount })
+    : scope.kind === "unsaved" ? t("Non salvate")
+    : collection ? t("{name} · {n} sorgenti", { name: collection.name, n: collection.sources.filter((s) => s.included).length })
     : source ? source.title || source.item_id : "";
 
   const refresh = async () => {
@@ -104,12 +106,12 @@ export function SearchView({ scope, lib, jobs, query, onQuery, defaultOriginals,
   };
 
   let empty: string | null = null;
-  if (!lib.collections.length && !lib.unsaved.length) empty = "Crea una raccolta o incolla un link archive.org per iniziare";
-  else if (collection && !collection.sources.length) empty = "Aggiungi sorgenti con ⋯ → Aggiungi sorgenti";
-  else if (collection && !collection.sources.some((s) => s.included)) empty = "Tutte le sorgenti di questa raccolta sono escluse dalla ricerca: spunta quelle da includere";
+  if (!lib.collections.length && !lib.unsaved.length) empty = t("Crea una raccolta o incolla un link archive.org per iniziare");
+  else if (collection && !collection.sources.length) empty = t("Aggiungi sorgenti con ⋯ → Aggiungi sorgenti");
+  else if (collection && !collection.sources.some((s) => s.included)) empty = t("Tutte le sorgenti di questa raccolta sono escluse dalla ricerca: spunta quelle da includere");
   else if (scope.kind === "all" && allCount === 0)
-    empty = lib.unsaved.length ? "Nessuna sorgente salvata: le Non salvate si cercano selezionandole a sinistra" : "Le raccolte sono vuote: aggiungi sorgenti con ⋯ → Aggiungi sorgenti";
-  else if (result && result.total === 0 && (words.length || exts.length)) empty = "Nessun file corrisponde alla ricerca";
+    empty = lib.unsaved.length ? t("Nessuna sorgente salvata: le Non salvate si cercano selezionandole a sinistra") : t("Le raccolte sono vuote: aggiungi sorgenti con ⋯ → Aggiungi sorgenti");
+  else if (result && result.total === 0 && (words.length || exts.length)) empty = t("Nessun file corrisponde alla ricerca");
 
   const shown = result?.results ?? [];
   // Sigle calcolate sulle sorgenti dell'ambito (non sui risultati), così non cambiano mentre si scrive.
@@ -127,43 +129,43 @@ export function SearchView({ scope, lib, jobs, query, onQuery, defaultOriginals,
 
   return (
     <>
-      <input className="field search" autoFocus placeholder="Cerca nei file… oppure incolla un link archive.org" value={query}
+      <input className="field search" autoFocus placeholder={t("Cerca nei file… oppure incolla un link archive.org")} value={query}
         onChange={(e) => onQuery(e.target.value)} onPaste={onPaste} onKeyDown={onKeyDown} />
       <div className="row" style={{ flexWrap: "wrap" }}>
         <b className="name">{title}</b>
         {result && (
           <span className="muted small">
-            · {result.total.toLocaleString("it-IT")} risultati{result.total > shown.length ? ` · mostrati ${shown.length}` : ""}
+            · {t("{n} risultati", { n: result.total.toLocaleString(locale) })}{result.total > shown.length ? ` · ${t("mostrati {n}", { n: shown.length })}` : ""}
           </span>
         )}
         <div className="grow" />
-        <button className="muted small" disabled={pending || !selectable.length} title="Seleziona i risultati non ancora scaricati né in coda"
-          onClick={() => setSelected(new Map(selectable.map((h) => [hitKey(h), h])))}>Tutti</button>
+        <button className="muted small" disabled={pending || !selectable.length} title={t("Seleziona i risultati non ancora scaricati né in coda")}
+          onClick={() => setSelected(new Map(selectable.map((h) => [hitKey(h), h])))}>{t("Tutti")}</button>
         <span className="muted small">·</span>
-        <button className="muted small" onClick={() => setSelected(new Map())}>Nessuno</button>
-        <button className="btn small" disabled={!selected.size || pending} onClick={enqueue}>Aggiungi {selected.size} alla coda</button>
+        <button className="muted small" onClick={() => setSelected(new Map())}>{t("Nessuno")}</button>
+        <button className="btn small" disabled={!selected.size || pending} onClick={enqueue}>{t("Aggiungi {n} alla coda", { n: selected.size })}</button>
       </div>
       <div className="row" style={{ flexWrap: "wrap", gap: 6 }}>
-        <button className={`chip ${originals ? "on" : ""}`} onClick={() => setOriginals((o) => !o)}>Solo originali</button>
+        <button className={`chip ${originals ? "on" : ""}`} onClick={() => setOriginals((o) => !o)}>{t("Solo originali")}</button>
         {extChips.map(({ ext, count }) => (
           <button key={ext} className={`chip ${exts.includes(ext) ? "on" : ""}`} onClick={() => toggleExt(ext)}>
-            {ext}{count != null && <span className="muted"> {count.toLocaleString("it-IT")}</span>}
+            {ext}{count != null && <span className="muted"> {count.toLocaleString(locale)}</span>}
           </button>
         ))}
         <div className="grow" />
-        <select className="field sort" value={sort} onChange={(e) => setSort(e.target.value as Sort)} title="Ordina i risultati">
-          <option value="name">Nome</option>
-          <option value="size_desc">Più grandi prima</option>
-          <option value="size_asc">Più piccoli prima</option>
+        <select className="field sort" value={sort} onChange={(e) => setSort(e.target.value as Sort)} title={t("Ordina i risultati")}>
+          <option value="name">{t("Nome")}</option>
+          <option value="size_desc">{t("Più grandi prima")}</option>
+          <option value="size_asc">{t("Più piccoli prima")}</option>
         </select>
       </div>
       {source && (
         <div className="row muted small">
-          <span>{source.file_count.toLocaleString("it-IT")} file · {human(source.total_size)} · aggiornata il {formatDate(source.updated_at)}</span>
+          <span>{t("{n} file · {size} · aggiornata il {date}", { n: source.file_count.toLocaleString(locale), size: human(source.total_size), date: formatDate(source.updated_at, locale) || t("mai") })}</span>
           {source.error && <span className="warn" title={source.error}>⚠ {source.error}</span>}
           <div className="grow" />
-          <button className="btn small ghost" disabled={refreshing} onClick={refresh}>{refreshing ? "Aggiornamento…" : "↻ Aggiorna"}</button>
-          {unsaved && <button className="btn small" onClick={() => onSaveUnsaved(source.item_id)}>★ Salva</button>}
+          <button className="btn small ghost" disabled={refreshing} onClick={refresh}>{refreshing ? t("Aggiornamento…") : `↻ ${t("Aggiorna")}`}</button>
+          {unsaved && <button className="btn small" onClick={() => onSaveUnsaved(source.item_id)}>★ {t("Salva")}</button>}
         </div>
       )}
       <div className="card results">

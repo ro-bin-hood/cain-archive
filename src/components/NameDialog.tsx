@@ -1,10 +1,12 @@
 import { useState, type FormEvent } from "react";
+import { useT } from "../i18n";
 
 type Props = { title: string; initial?: string; confirm: string; onSubmit: (name: string) => Promise<void>; onClose: () => void };
 
 /** Finestra con un solo campo di testo; gli errori di onSubmit compaiono sotto il campo. */
 export function NameDialog({ title, initial = "", confirm, onSubmit, onClose }: Props) {
   const [name, setName] = useState(initial);
+  const { t } = useT();
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const submit = async (e: FormEvent) => {
@@ -25,7 +27,7 @@ export function NameDialog({ title, initial = "", confirm, onSubmit, onClose }: 
         {error && <span className="err small">{error}</span>}
         <div className="row">
           <div className="grow" />
-          <button type="button" className="btn ghost" onClick={onClose}>Annulla</button>
+          <button type="button" className="btn ghost" onClick={onClose}>{t("Annulla")}</button>
           <button className="btn" disabled={busy}>{confirm}</button>
         </div>
       </form>
