@@ -242,6 +242,27 @@ impl Library {
         self.save()
     }
 
+    /// Moves a collection before `before` (or to the end) among its siblings. A parent takes its
+    /// subcollections along; display order among siblings follows the order in the file.
+    pub fn move_collection(&mut self, id: &str, before: Option<&str>) -> Result<(), String> {
+        let parent = self.collection_mut(id)?.parent.clone();
+        if let Some(b) = before {
+            let target = self.file.collections.iter().find(|c| c.id == b).ok_or_else(|| m("Raccolta non trovata", "Collection not found").to_string())?;
+            if target.parent != parent {
+                return Err(m("Si può spostare solo tra raccolte dello stesso livello", "Collections can only be moved within the same level").into());
+            }
+            if b == id {
+                return Ok(());
+            }
+        }
+        let (block, rest): (Vec<Collection>, Vec<Collection>) =
+            std::mem::take(&mut self.file.collections).into_iter().partition(|c| c.id == id || (parent.is_none() && c.parent.as_deref() == Some(id)));
+        self.file.collections = rest;
+        let at = before.and_then(|b| self.file.collections.iter().position(|c| c.id == b)).unwrap_or(self.file.collections.len());
+        self.file.collections.splice(at..at, block);
+        self.save()
+    }
+
     pub fn delete_collection(&mut self, id: &str) -> Result<(), String> {
         let before = self.file.collections.len();
         // Deleting a parent also deletes its subcollections.
@@ -813,6 +834,36 @@ mod tests {
         lib.delete_collection(&x).unwrap();
         assert!(lib.state().collections.is_empty());
         assert!(lib.known("d").is_none(), "sorgente rimasta orfana");
+    }
+
+    fn tree(lib: &Library) -> Vec<String> {
+        let st = lib.state();
+        st.collections.iter().filter(|c| c.parent.is_none()).flat_map(|c| {
+            let kids = st.collections.iter().filter(|k| k.parent.as_deref() == Some(c.id.as_str())).map(|k| format!("  {}", k.name));
+            std::iter::once(c.name.clone()).chain(kids).collect::<Vec<_>>()
+        }).collect()
+    }
+
+    /// Dragging a collection moves it among its siblings; a parent takes its subcollections along.
+    #[test]
+    fn collections_can_be_reordered_among_siblings() {
+        let d = tempfile::tempdir().unwrap();
+        let mut lib = Library::load(d.path());
+        let a = lib.create_collection("A").unwrap();
+        let b = lib.create_collection("B").unwrap();
+        let c = lib.create_collection("C").unwrap();
+        let a1 = lib.create_subcollection(&a, "a1").unwrap();
+        let a2 = lib.create_subcollection(&a, "a2").unwrap();
+        lib.move_collection(&a, Some(&c)).unwrap();
+        assert_eq!(tree(&lib), ["B", "A", "  a1", "  a2", "C"]);
+        lib.move_collection(&b, None).unwrap();
+        assert_eq!(tree(&lib), ["A", "  a1", "  a2", "C", "B"]);
+        lib.move_collection(&a2, Some(&a1)).unwrap();
+        assert_eq!(tree(&lib), ["A", "  a2", "  a1", "C", "B"]);
+        assert_eq!(lib.move_collection(&a1, Some(&c)).unwrap_err(), "Si può spostare solo tra raccolte dello stesso livello");
+        assert_eq!(lib.move_collection("c99", None).unwrap_err(), "Raccolta non trovata");
+        let reloaded = Library::load(d.path());
+        assert_eq!(tree(&reloaded), ["A", "  a2", "  a1", "C", "B"], "order is saved");
     }
 
 }

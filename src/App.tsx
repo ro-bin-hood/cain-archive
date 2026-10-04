@@ -38,6 +38,10 @@ export default function App() {
     try { return Number(localStorage.getItem("sidebarWidth")) || 250; } catch { return 250; }
   });
   const dialogRef = useRef<Dialog | null>(null);
+  // Last search view, to go back to when the queue is closed.
+  const lastSearch = useRef<View>({ kind: "search", scope: { kind: "all" } });
+  if (view.kind === "search") lastSearch.current = view;
+  const toggleQueue = () => setView((v) => (v.kind === "queue" ? lastSearch.current : { kind: "queue" }));
   const langRef = useRef<"it" | "en">("it");
   dialogRef.current = dialog;
 
@@ -204,6 +208,7 @@ export default function App() {
           onImport={importList}
           onNewCollectionThen={(then) => setDialog({ kind: "new", then })}
           onNewSubcollection={(parent) => setDialog({ kind: "newsub", parent })}
+          onToggleQueue={toggleQueue}
           onRename={(c) => setDialog({ kind: "rename", collection: c })}
           onAddSources={(id) => setDialog({ kind: "add", collectionId: id })}
           onSaveUnsaved={(id) => setDialog({ kind: "save", itemId: id })}
@@ -217,7 +222,7 @@ export default function App() {
             </div>
           )}
           {view.kind === "queue" ? (
-            <QueueView jobs={q.jobs} running={q.running} progress={q.progress} />
+            <QueueView jobs={q.jobs} running={q.running} progress={q.progress} onClose={() => setView(lastSearch.current)} />
           ) : (
             <SearchView
               scope={view.scope}
@@ -235,7 +240,7 @@ export default function App() {
         </main>
       </div>
       {dragging && <div className="drop-overlay"><div>⤓ {t("Rilascia per importare la raccolta")}</div></div>}
-      <QueueStrip jobs={q.jobs} running={q.running} progress={q.progress} onOpen={() => setView({ kind: "queue" })} />
+      <QueueStrip jobs={q.jobs} running={q.running} progress={q.progress} onOpen={toggleQueue} />
 
       {dialog?.kind === "settings" && <SettingsPanel settings={settings} onChange={updateSettings} onClose={close} />}
       {dialog?.kind === "login" && <LoginDialog onDone={(u) => { setUser(u); close(); }} onClose={close} />}

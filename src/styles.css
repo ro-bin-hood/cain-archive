@@ -107,3 +107,9 @@ body.dragging-row,body.dragging-row *{cursor:grabbing !important}
 .queue-list .drop-before{box-shadow:inset 0 2px 0 var(--ac)}
 .queue-list.drop-end{box-shadow:inset 0 -2px 0 var(--ac),var(--sh)}
 .queue-list .dragged{opacity:.45}
+/* Collection drag & drop */
+.sidebar .side-item.drop-before{box-shadow:inset 0 2px 0 var(--ac)}
+.sidebar .side-item.dragged{opacity:.45}
+.sidebar .drop-end-line{height:2px;background:var(--ac);margin:0 8px}
+.sidebar .side-item .grab{visibility:hidden}
+.sidebar .side-item:hover .grab{visibility:visible}

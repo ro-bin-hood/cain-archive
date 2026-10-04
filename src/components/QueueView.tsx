@@ -4,9 +4,9 @@ import { duration, human } from "../util";
 import { QueueRow } from "./QueueRow";
 import { useT } from "../i18n";
 
-type Props = { jobs: Job[]; running: boolean; progress: Snapshot | null };
+type Props = { jobs: Job[]; running: boolean; progress: Snapshot | null; onClose: () => void };
 
-export function QueueView({ jobs, running, progress }: Props) {
+export function QueueView({ jobs, running, progress, onClose }: Props) {
   const { t } = useT();
   // Mouse-based reordering (HTML5 drag & drop doesn't work in the WebView while file dropping
   // is enabled): `over` is where the dragged file will land.
@@ -58,6 +58,7 @@ export function QueueView({ jobs, running, progress }: Props) {
         ) : (
           <button className="btn small" disabled={!canStart} onClick={() => api.start()}>▶ {t("Avvia")}</button>
         )}
+        <button className="icon-btn" title={t("Torna alla ricerca")} onClick={onClose}>✕</button>
       </div>
       {running && <div className="bar"><i style={{ width: `${pct}%` }} /></div>}
       <div className={`card queue-list ${drag && drag.over >= jobs.length ? "drop-end" : ""}`} ref={listRef}>

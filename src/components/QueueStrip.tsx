@@ -16,7 +16,7 @@ export function QueueStrip({ jobs, running, progress, onOpen }: Props) {
     text = jobs.length ? t("Coda: {n} file", { n: jobs.length }) : t("Coda vuota");
   }
   return (
-    <footer className="strip" onClick={onOpen} title={t("Apri la coda")}>
+    <footer className="strip" onClick={onOpen} title={t("Apri o chiudi la coda")}>
       <span className={running ? "" : "muted"}>{text}</span>
       <div className="grow" />
       {running && <div className="bar" style={{ width: 180 }}><i style={{ width: `${pct}%` }} /></div>}

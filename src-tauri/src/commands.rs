@@ -240,3 +240,9 @@ pub fn create_subcollection(state: State<'_, AppState>, parent: String, name: St
 pub fn move_job(state: State<'_, AppState>, id: u64, before: Option<u64>) {
     state.queue.move_job(id, before)
 }
+
+#[tauri::command(async)]
+pub fn move_collection(state: State<'_, AppState>, id: String, before: Option<String>) -> Result<LibraryState, String> {
+    state.library.lock().unwrap().move_collection(&id, before.as_deref())?;
+    Ok(lib_state(&state))
+}

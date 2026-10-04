@@ -21,13 +21,15 @@ type Props = {
   /** Asks for a new collection name, creates it, then runs `then` with its id. */
   onNewCollectionThen: (then: (collectionId: string) => Promise<void>) => void;
   onNewSubcollection: (parentId: string) => void;
+  /** Opens the queue, or goes back to the previous search if the queue is already open. */
+  onToggleQueue: () => void;
 };
 
 /** Selected sources (always within one collection) and the open context menu. */
 type Picked = { cid: string; ids: Set<string>; anchor: string };
 type Ctx = { x: number; y: number; cid: string; ids: string[] };
 
-export function Sidebar({ width, lib, view, queueCount, onSelect, onLibrary, onError, onNewCollection, onImport, onRename, onAddSources, onSaveUnsaved, onNewCollectionThen, onNewSubcollection }: Props) {
+export function Sidebar({ width, lib, view, queueCount, onSelect, onLibrary, onError, onNewCollection, onImport, onRename, onAddSources, onSaveUnsaved, onNewCollectionThen, onNewSubcollection, onToggleQueue }: Props) {
   const { t } = useT();
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [menu, setMenu] = useState<string | null>(null);
@@ -68,6 +70,39 @@ export function Sidebar({ width, lib, view, queueCount, onSelect, onLibrary, onE
     if (ids !== picked?.ids) setPicked({ cid: c.id, ids, anchor: id });
     setMenu(null);
     setCtx({ x: e.clientX, y: e.clientY, cid: c.id, ids: [...ids] });
+  };
+
+  const selectAll = (c: CollectionView) => {
+    setMenu(null);
+    setCtx(null);
+    if (c.sources.length) setPicked({ cid: c.id, ids: new Set(c.sources.map((s) => s.item_id)), anchor: c.sources[0].item_id });
+  };
+
+  // Dragging a collection by its handle: it moves among its siblings (top-level collections,
+  // or subcollections of the same parent). `over` is the sibling it will land before.
+  const [collDrag, setCollDrag] = useState<{ id: string; over: string | null } | null>(null);
+  const grabCollection = (e: MouseEvent, c: CollectionView) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const siblings = () => [...document.querySelectorAll<HTMLElement>(`.sidebar [data-coll][data-parent="${c.parent ?? ""}"]`)];
+    const targetAt = (y: number) => siblings().find((r) => { const b = r.getBoundingClientRect(); return y < b.top + b.height / 2; })?.dataset.coll ?? null;
+    let over = targetAt(e.clientY);
+    setCollDrag({ id: c.id, over });
+    const move = (ev: globalThis.MouseEvent) => { over = targetAt(ev.clientY); setCollDrag({ id: c.id, over }); };
+    const up = () => {
+      window.removeEventListener("mousemove", move);
+      window.removeEventListener("mouseup", up);
+      document.body.classList.remove("dragging-row");
+      setCollDrag(null);
+      const ids = siblings().map((r) => r.dataset.coll);
+      const from = ids.indexOf(c.id);
+      // Dropped on itself or right after itself: no move.
+      if (over === c.id || (over !== null && ids.indexOf(over) === from + 1) || (over === null && from === ids.length - 1)) return;
+      api.moveCollection(c.id, over).then(onLibrary).catch(fail);
+    };
+    document.body.classList.add("dragging-row");
+    window.addEventListener("mousemove", move);
+    window.addEventListener("mouseup", up);
   };
 
   const bulk = async (op: () => Promise<LibraryState>) => {
@@ -117,7 +152,10 @@ export function Sidebar({ width, lib, view, queueCount, onSelect, onLibrary, onE
     const allSources = [...c.sources, ...kids.flatMap((k) => k.sources)];
     return (
       <div key={c.id}>
-        <div className={`side-item ${c.parent ? "child" : ""} ${current === `c:${c.id}` ? "on" : ""}`} onClick={() => select({ kind: "search", scope: { kind: "collection", id: c.id } })}>
+        <div data-coll={c.id} data-parent={c.parent ?? ""}
+          className={`side-item ${c.parent ? "child" : ""} ${current === `c:${c.id}` ? "on" : ""} ${collDrag?.over === c.id && collDrag.id !== c.id ? "drop-before" : ""} ${collDrag?.id === c.id ? "dragged" : ""}`}
+          onClick={() => select({ kind: "search", scope: { kind: "collection", id: c.id } })}>
+          <span className="grab" title={t("Trascina per riordinare")} onMouseDown={(e) => grabCollection(e, c)} onClick={(e) => e.stopPropagation()}>⋮⋮</span>
           <button className="small-btn" onClick={(e) => { e.stopPropagation(); toggle(c.id); }}>{collapsed.has(c.id) ? "▸" : "▾"}</button>
           <span className="grow name">{c.name}</span>
           <span className="muted small">{allSources.length}</span>
@@ -127,6 +165,7 @@ export function Sidebar({ width, lib, view, queueCount, onSelect, onLibrary, onE
           {menu === `c:${c.id}` && (
             <div className="menu" onClick={(e) => e.stopPropagation()}>
               <button onClick={() => { setMenu(null); onAddSources(c.id); }}>{t("Aggiungi sorgenti")}</button>
+              <button disabled={!c.sources.length} onClick={() => selectAll(c)}>{t("Seleziona tutte le sorgenti")}</button>
               {!c.parent && <button onClick={() => { setMenu(null); onNewSubcollection(c.id); }}>{t("Nuova sotto-raccolta")}</button>}
               <button disabled={!allSources.length} onClick={() => refresh(allSources.map((s) => s.item_id))}>{t("Aggiorna tutte")}</button>
               <button onClick={() => { setMenu(null); onRename(c); }}>{t("Rinomina")}</button>
@@ -201,14 +240,16 @@ export function Sidebar({ width, lib, view, queueCount, onSelect, onLibrary, onE
         </span>
       </div>
       {tops.map(renderCollection)}
+      {collDrag && collDrag.over === null && <div className="drop-end-line" />}
 
       <div className="grow" />
-      <div className={`side-item ${current === "queue" ? "on" : ""}`} onClick={() => select({ kind: "queue" })}>
+      <div className={`side-item ${current === "queue" ? "on" : ""}`} onClick={() => { setMenu(null); onToggleQueue(); }}>
         ⬇ {t("Coda")} <span className="grow" />{queueCount > 0 && <span className="badge">{queueCount}</span>}
       </div>
       {ctx && (
         <div className="ctx-backdrop" onClick={() => setCtx(null)} onContextMenu={(e) => { e.preventDefault(); setCtx(null); }}>
           <div className="menu ctx-menu" style={{ left: Math.min(ctx.x, window.innerWidth - 240), top: Math.min(ctx.y, window.innerHeight - 320) }} onClick={(e) => e.stopPropagation()}>
+            {(() => { const c = lib.collections.find((x) => x.id === ctx.cid); return c && ctx.ids.length < c.sources.length ? <button onClick={() => selectAll(c)}>{t("Seleziona tutte le sorgenti")}</button> : null; })()}
             <button onClick={() => bulk(() => api.removeSources(ctx.cid, ctx.ids))}>{t("Togli dalla raccolta ({n})", { n: ctx.ids.length })}</button>
             <div className="menu-head">{t("Sposta in")}</div>
             {targets.filter((c) => c.id !== ctx.cid).map((c) => (
