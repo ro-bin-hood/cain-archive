@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { api, type Hit, type LibraryState, type Scope, type SearchResult } from "../api";
-import { extractLinks, formatDate, hitKey, human } from "../util";
+import { extractLinks, formatDate, hitKey, human, tagLabels } from "../util";
 import { ResultRow } from "./ResultRow";
 
 type Props = {
@@ -80,6 +80,13 @@ export function SearchView({ scope, lib, query, onQuery, defaultOriginals, onLib
   else if (result && result.total === 0 && words.length) empty = "Nessun file contiene tutte le parole";
 
   const shown = result?.results ?? [];
+  // Sigle calcolate sulle sorgenti dell'ambito (non sui risultati), così non cambiano mentre si scrive.
+  const scopeIds =
+    scope.kind === "collection" ? (collection?.sources.filter((s) => s.included).map((s) => s.item_id) ?? [])
+    : scope.kind === "source" ? [scope.item_id]
+    : scope.kind === "unsaved" ? lib.unsaved.map((m) => m.item_id)
+    : lib.collections.flatMap((c) => c.sources.map((s) => s.item_id));
+  const tags = tagLabels([...scopeIds, ...shown.map((h) => h.item_id)]);
   return (
     <>
       <input className="field search" autoFocus placeholder="Cerca nei file… oppure incolla un link archive.org" value={query} onChange={(e) => onInput(e.target.value)} />
@@ -108,7 +115,7 @@ export function SearchView({ scope, lib, query, onQuery, defaultOriginals, onLib
       )}
       <div className="card results">
         {empty ? <div className="empty">{empty}</div>
-          : shown.map((h) => <ResultRow key={hitKey(h)} hit={h} checked={selected.has(hitKey(h))} words={words} onToggle={toggle} />)}
+          : shown.map((h) => <ResultRow key={hitKey(h)} hit={h} tag={tags.get(h.item_id) ?? h.item_id} checked={selected.has(hitKey(h))} words={words} onToggle={toggle} />)}
       </div>
     </>
   );

@@ -1,6 +1,6 @@
 import { memo, type ReactNode } from "react";
 import type { Hit } from "../api";
-import { human, shortId } from "../util";
+import { human } from "../util";
 
 /** Il nome con le parole cercate evidenziate (senza distinguere maiuscole e minuscole). */
 function highlight(name: string, words: string[]): ReactNode {
@@ -22,13 +22,13 @@ function highlight(name: string, words: string[]): ReactNode {
   return out;
 }
 
-type Props = { hit: Hit; checked: boolean; words: string[]; onToggle: (h: Hit) => void };
+type Props = { hit: Hit; tag: string; checked: boolean; words: string[]; onToggle: (h: Hit) => void };
 
-function Row({ hit, checked, words, onToggle }: Props) {
+function Row({ hit, tag, checked, words, onToggle }: Props) {
   return (
     <label className="item-row" style={{ cursor: "pointer" }}>
       <input type="checkbox" className="check" checked={checked} onChange={() => onToggle(hit)} />
-      <span className="src" title={hit.item_id}>{shortId(hit.item_id)}</span>
+      <span className="src" title={hit.item_id}>{tag}</span>
       <span className={`grow name ${hit.original ? "" : "muted"}`} title={hit.name}>{highlight(hit.name, words)}</span>
       <span className="muted small">{hit.size ? human(hit.size) : "?"}</span>
     </label>
