@@ -1,4 +1,4 @@
-import { memo, useEffect, useState } from "react";
+import { memo, useEffect, useState, type MouseEvent } from "react";
 import { api, type Job, type JobProgress } from "../api";
 import { human } from "../util";
 import { useT, type T } from "../i18n";
@@ -18,7 +18,7 @@ function statusText(t: T, j: Job, p: JobProgress | undefined, left: number): { t
   }
 }
 
-function Row({ job, live }: { job: Job; live?: JobProgress }) {
+function Row({ job, live, onGrab }: { job: Job; live?: JobProgress; onGrab: (e: MouseEvent, id: number) => void }) {
   const { t } = useT();
   // Conto alla rovescia del nuovo tentativo, che riparte a ogni nuovo stato Retrying.
   const retryKey = job.status.kind === "Retrying" ? `${job.status.attempt}:${job.status.wait_s}` : "";
@@ -37,7 +37,8 @@ function Row({ job, live }: { job: Job; live?: JobProgress }) {
     <button className="icon-btn" title={title} onClick={fn}>{icon}</button>
   );
   return (
-    <div className="item-row">
+    <div className="item-row" data-job={job.id}>
+      <span className="grab" title={t("Trascina per riordinare")} onMouseDown={(e) => onGrab(e, job.id)}>⋮⋮</span>
       <div className="grow">
         <div className="name" title={`${job.item_id}/${job.name}`}>{job.name}</div>
         {k === "Downloading" && <div className="bar" style={{ margin: "5px 0 3px" }}><i style={{ width: `${pct}%` }} /></div>}
@@ -55,5 +56,5 @@ function Row({ job, live }: { job: Job; live?: JobProgress }) {
 /** Con migliaia di file in coda, ridisegna solo le righe che sono cambiate davvero. */
 export const QueueRow = memo(
   Row,
-  (a, b) => a.live === b.live && JSON.stringify(a.job) === JSON.stringify(b.job),
+  (a, b) => a.live === b.live && a.onGrab === b.onGrab && JSON.stringify(a.job) === JSON.stringify(b.job),
 );

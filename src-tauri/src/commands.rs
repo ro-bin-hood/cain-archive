@@ -235,3 +235,8 @@ pub fn create_subcollection(state: State<'_, AppState>, parent: String, name: St
     state.library.lock().unwrap().create_subcollection(&parent, &name)?;
     Ok(lib_state(&state))
 }
+
+#[tauri::command]
+pub fn move_job(state: State<'_, AppState>, id: u64, before: Option<u64>) {
+    state.queue.move_job(id, before)
+}

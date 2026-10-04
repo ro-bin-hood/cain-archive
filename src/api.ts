@@ -37,6 +37,7 @@ export const api = {
   resumeJob: (id: number) => invoke<void>("resume_job", { id }),
   retryJob: (id: number) => invoke<void>("retry_job", { id }),
   removeJob: (id: number) => invoke<void>("remove_job", { id }),
+  moveJob: (id: number, before: number | null) => invoke<void>("move_job", { id, before }),
   clearCompleted: () => invoke<void>("clear_completed"),
   openFolder: (id: number) => invoke<void>("open_folder", { id }),
   setSettings: (settings: Settings) => invoke<void>("set_settings", { settings }),

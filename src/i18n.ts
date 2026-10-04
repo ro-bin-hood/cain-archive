@@ -112,6 +112,7 @@ export const EN: Record<string, string> = {
   "Riprova": "Retry",
   "Apri cartella": "Open folder",
   "Rimuovi": "Remove",
+  "Trascina per riordinare": "Drag to reorder",
   // Impostazioni
   "Tema": "Theme",
   "Automatico": "Automatic",

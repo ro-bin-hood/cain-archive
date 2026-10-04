@@ -249,6 +249,21 @@ impl Queue {
         self.notify();
     }
 
+    /// Sposta un job prima di `before` (o in fondo se None). L'ordine decide quale parte per primo.
+    pub fn move_job(&self, id: u64, before: Option<u64>) {
+        {
+            let mut i = self.inner.lock().unwrap();
+            if before == Some(id) || before.is_some_and(|b| !i.jobs.iter().any(|j| j.id == b)) {
+                return;
+            }
+            let Some(from) = i.jobs.iter().position(|j| j.id == id) else { return };
+            let job = i.jobs.remove(from);
+            let to = before.and_then(|b| i.jobs.iter().position(|j| j.id == b)).unwrap_or(i.jobs.len());
+            i.jobs.insert(to, job);
+        }
+        self.notify();
+    }
+
     pub fn clear_completed(&self) {
         self.inner.lock().unwrap().jobs.retain(|j| j.status != JobStatus::Done);
         self.notify();
@@ -428,4 +443,32 @@ mod tests {
         ];
         assert_eq!(totals(&jobs, 20), (120, 350));
     }
+    struct NullSink;
+    impl Sink for NullSink {
+        fn changed(&self, _: &[Job], _: bool) {}
+        fn progress(&self, _: &Snapshot) {}
+        fn alert(&self, _: &str) {}
+    }
+
+    fn order(q: &Queue) -> Vec<u64> {
+        q.jobs().iter().map(|j| j.id).collect()
+    }
+
+    /// Trascinando un file nella coda lo si mette prima di un altro, o in fondo.
+    #[test]
+    fn jobs_can_be_reordered() {
+        let jobs = vec![job(1, 1, JobStatus::Queued), job(2, 1, JobStatus::Queued), job(3, 1, JobStatus::Done)];
+        let q = Queue::new(jobs, Settings::default(), None, std::sync::Arc::new(NullSink), "http://x");
+        q.move_job(3, Some(1));
+        assert_eq!(order(&q), [3, 1, 2]);
+        q.move_job(3, None);
+        assert_eq!(order(&q), [1, 2, 3]);
+        q.move_job(1, Some(3));
+        assert_eq!(order(&q), [2, 1, 3]);
+        q.move_job(2, Some(2));
+        q.move_job(99, Some(1));
+        q.move_job(1, Some(99));
+        assert_eq!(order(&q), [2, 1, 3], "spostamenti senza senso non cambiano niente");
+    }
+
 }

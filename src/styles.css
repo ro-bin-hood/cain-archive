@@ -97,3 +97,13 @@ body.resizing{cursor:col-resize;user-select:none}
 /* Albero delle raccolte: sotto-raccolte e loro sorgenti rientrate */
 .side-item.child{padding-left:22px}
 .side-item.sub.deep{padding-left:46px}
+/* Testi non selezionabili (è un'app, non una pagina); restano selezionabili i campi di testo */
+body{user-select:none;-webkit-user-select:none}
+input,textarea,select{user-select:text;-webkit-user-select:text}
+/* Coda riordinabile */
+.grab{cursor:grab;color:var(--mu);padding:0 4px;letter-spacing:-2px;flex:none}
+.grab:hover{color:var(--fg)}
+body.dragging-row,body.dragging-row *{cursor:grabbing !important}
+.queue-list .drop-before{box-shadow:inset 0 2px 0 var(--ac)}
+.queue-list.drop-end{box-shadow:inset 0 -2px 0 var(--ac),var(--sh)}
+.queue-list .dragged{opacity:.45}
