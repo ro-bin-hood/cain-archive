@@ -4,6 +4,7 @@
 //! che inizia con `#` è il nome della raccolta; le altre `#` e le righe vuote sono commenti.
 //! Sono accettate anche righe CSV "titolo,link" (separatori `,` `;` o tab): conta il campo link.
 
+use crate::i18n::m;
 use crate::ia;
 use serde::Serialize;
 use std::collections::HashSet;
@@ -59,7 +60,7 @@ pub fn parse_list(text: &str) -> ParsedList {
 
 /// Legge un file di lista; se manca la riga `# nome`, il nome è quello del file.
 pub fn read_list_file(path: &Path) -> Result<ParsedList, String> {
-    let bytes = std::fs::read(path).map_err(|e| format!("Impossibile leggere il file: {e}"))?;
+    let bytes = std::fs::read(path).map_err(|e| format!("{}: {e}", m("Impossibile leggere il file", "Could not read the file")))?;
     let mut list = parse_list(&String::from_utf8_lossy(&bytes));
     if list.name.is_none() {
         list.name = path.file_stem().map(|s| s.to_string_lossy().into_owned());

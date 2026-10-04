@@ -1,4 +1,5 @@
 pub mod download;
+pub mod i18n;
 pub mod ia;
 pub mod import;
 pub mod library;
@@ -93,6 +94,7 @@ pub fn run() {
             commands::search,
             commands::pick_import_file,
             commands::read_import_file,
+            commands::set_ui_language,
             commands::export_collection,
         ])
         .run(tauri::generate_context!())

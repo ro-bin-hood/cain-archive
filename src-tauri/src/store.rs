@@ -1,4 +1,5 @@
 use crate::ia::Auth;
+use crate::i18n::m;
 use crate::types::{Job, JobStatus, Settings};
 use std::{fs, io, path::Path};
 
@@ -20,6 +21,9 @@ pub fn load_settings(dir: &Path) -> Settings {
     s.workers = s.workers.clamp(1, 8);
     if !matches!(s.theme.as_str(), "system" | "light" | "dark") {
         s.theme = "system".into();
+    }
+    if !matches!(s.language.as_str(), "system" | "it" | "en") {
+        s.language = "system".into();
     }
     s
 }
@@ -48,6 +52,7 @@ pub fn save_queue(dir: &Path, jobs: &[Job]) -> io::Result<()> {
 /// sistemi rifiuta già voci da ~300 caratteri, mentre una sessione di archive.org ne ha ~700.
 #[cfg(windows)]
 mod secret {
+    use crate::i18n::m;
     use std::path::Path;
     use windows_sys::Win32::Foundation::LocalFree;
     use windows_sys::Win32::Security::Cryptography::{CryptProtectData, CryptUnprotectData, CRYPT_INTEGER_BLOB};
@@ -77,7 +82,7 @@ mod secret {
     }
 
     pub fn save(dir: &Path, json: &str) -> Result<(), String> {
-        let enc = dpapi(json.as_bytes(), true).ok_or("cifratura non riuscita")?;
+        let enc = dpapi(json.as_bytes(), true).ok_or(m("cifratura non riuscita", "encryption failed"))?;
         super::write_atomic(&dir.join("session.bin"), &enc).map_err(|e| e.to_string())
     }
 
@@ -89,6 +94,7 @@ mod secret {
 /// Fuori da Windows: portachiavi di sistema (Keychain, keyutils).
 #[cfg(not(windows))]
 mod secret {
+    use crate::i18n::m;
     use std::path::Path;
     const SERVICE: &str = "com.cainarchive.app";
 
@@ -101,7 +107,7 @@ mod secret {
     }
 
     pub fn save(_dir: &Path, json: &str) -> Result<(), String> {
-        entry().ok_or("portachiavi non disponibile")?.set_password(json).map_err(|e| e.to_string())
+        entry().ok_or(m("portachiavi non disponibile", "keyring unavailable"))?.set_password(json).map_err(|e| e.to_string())
     }
 
     pub fn clear(_dir: &Path) {
@@ -117,7 +123,7 @@ pub fn load_auth(dir: &Path) -> Option<Auth> {
 
 pub fn save_auth(dir: &Path, a: &Auth) -> Result<(), String> {
     let json = serde_json::to_string(a).map_err(|e| e.to_string())?;
-    secret::save(dir, &json).map_err(|e| format!("Impossibile salvare la sessione: {e}"))
+    secret::save(dir, &json).map_err(|e| format!("{}: {e}", m("Impossibile salvare la sessione", "Could not save the session")))
 }
 
 pub fn clear_auth(dir: &Path) {
@@ -145,7 +151,7 @@ mod tests {
     #[test]
     fn settings_roundtrip_and_clamp_workers() {
         let d = tempfile::tempdir().unwrap();
-        let s = Settings { out_dir: "D:/dl".into(), workers: 5, default_originals: false, default_exts: "pdf,mp3".into(), theme: "dark".into() };
+        let s = Settings { out_dir: "D:/dl".into(), workers: 5, default_originals: false, default_exts: "pdf,mp3".into(), theme: "dark".into(), language: "it".into() };
         save_settings(d.path(), &s).unwrap();
         assert_eq!(load_settings(d.path()), s);
         save_settings(d.path(), &Settings { workers: 40, ..s.clone() }).unwrap();
@@ -155,6 +161,10 @@ mod tests {
         assert_eq!((partial.workers, partial.default_originals, partial.theme.as_str()), (1, true, "system"));
         std::fs::write(d.path().join("settings.json"), r#"{"theme": "fucsia"}"#).unwrap();
         assert_eq!(load_settings(d.path()).theme, "system");
+        std::fs::write(d.path().join("settings.json"), r#"{"language": "en"}"#).unwrap();
+        assert_eq!(load_settings(d.path()).language, "en");
+        std::fs::write(d.path().join("settings.json"), r#"{"language": "klingon"}"#).unwrap();
+        assert_eq!(load_settings(d.path()).language, "system");
     }
 
     #[test]

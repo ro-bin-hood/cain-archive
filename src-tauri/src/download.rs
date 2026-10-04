@@ -1,4 +1,5 @@
 use crate::ia;
+use crate::i18n::m;
 use futures_util::StreamExt;
 use reqwest::header::{HeaderMap, HeaderValue, RANGE, RETRY_AFTER};
 use reqwest::{Client, StatusCode};
@@ -90,11 +91,11 @@ async fn finalize(part: &Path, dest: &Path, expected: Option<u64>) -> Result<u64
     match expected {
         Some(e) if len < e => {
             // Tenuto: il prossimo tentativo riprende da qui con Range.
-            return Err(AttemptError::Retryable { msg: format!("File incompleto ({len} di {e} byte)"), retry_after: None });
+            return Err(AttemptError::Retryable { msg: format!("{} ({len}/{e} byte)", m("File incompleto", "Incomplete file")), retry_after: None });
         }
         Some(e) if len > e => {
             tokio::fs::remove_file(part).await.map_err(disk)?;
-            return Err(AttemptError::Retryable { msg: format!("Dimensione errata ({len} invece di {e} byte)"), retry_after: None });
+            return Err(AttemptError::Retryable { msg: format!("{} ({len} ≠ {e} byte)", m("Dimensione errata", "Wrong size")), retry_after: None });
         }
         _ => {}
     }
@@ -119,21 +120,21 @@ async fn attempt(req: &Request<'_>, cancel: &CancellationToken, on_progress: &(d
         headers.insert(RANGE, HeaderValue::from_str(&format!("bytes={have}-")).expect("header Range"));
     }
     let resp = tokio::select! {
-        r = ia::get(req.client, req.url, &headers) => r.map_err(|msg| AttemptError::Retryable { msg: format!("Errore di rete: {msg}"), retry_after: None })?,
+        r = ia::get(req.client, req.url, &headers) => r.map_err(|msg| AttemptError::Retryable { msg: format!("{}: {msg}", m("Errore di rete", "Network error")), retry_after: None })?,
         _ = cancel.cancelled() => return Err(AttemptError::Cancelled),
     };
     let status = resp.status();
     match status {
         StatusCode::RANGE_NOT_SATISFIABLE if have > 0 => return finalize(&part, req.dest, req.expected).await,
         StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN => {
-            let why = if req.authed { "item riservato" } else { "serve accedere" };
-            return Err(AttemptError::Fatal(format!("Accesso negato: {why}")));
+            let why = if req.authed { m("Accesso negato: item riservato", "Access denied: restricted item") } else { m("Accesso negato: serve accedere", "Access denied: log in required") };
+            return Err(AttemptError::Fatal(why.to_string()));
         }
-        StatusCode::NOT_FOUND => return Err(AttemptError::Fatal("File non trovato".into())),
+        StatusCode::NOT_FOUND => return Err(AttemptError::Fatal(m("File non trovato", "File not found").into())),
         s if s == StatusCode::TOO_MANY_REQUESTS || s.is_server_error() => {
-            return Err(AttemptError::Retryable { msg: format!("Server occupato (HTTP {})", s.as_u16()), retry_after: parse_retry_after(resp.headers()) });
+            return Err(AttemptError::Retryable { msg: format!("{} (HTTP {})", m("Server occupato", "Server busy"), s.as_u16()), retry_after: parse_retry_after(resp.headers()) });
         }
-        s if !s.is_success() => return Err(AttemptError::Fatal(format!("Errore HTTP {}", s.as_u16()))),
+        s if !s.is_success() => return Err(AttemptError::Fatal(format!("{} {}", m("Errore HTTP", "HTTP error"), s.as_u16()))),
         _ => {}
     }
     if status != StatusCode::PARTIAL_CONTENT {
@@ -161,7 +162,7 @@ async fn attempt(req: &Request<'_>, cancel: &CancellationToken, on_progress: &(d
             None => break,
             Some(Err(e)) => {
                 file.flush().await.map_err(disk)?;
-                return Err(AttemptError::Retryable { msg: format!("Connessione interrotta: {e}"), retry_after: None });
+                return Err(AttemptError::Retryable { msg: format!("{}: {e}", m("Connessione interrotta", "Connection dropped")), retry_after: None });
             }
             Some(Ok(chunk)) => {
                 file.write_all(&chunk).await.map_err(disk)?;

@@ -1,4 +1,5 @@
 use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION, COOKIE, LOCATION, USER_AGENT};
+use crate::i18n::m;
 use reqwest::{redirect::Policy, Client, Response, Url};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -132,10 +133,10 @@ pub async fn get(client: &Client, url: &str, headers: &HeaderMap) -> Result<Resp
         if !resp.status().is_redirection() {
             return Ok(resp);
         }
-        let loc = resp.headers().get(LOCATION).and_then(|v| v.to_str().ok()).ok_or("redirect senza Location")?;
+        let loc = resp.headers().get(LOCATION).and_then(|v| v.to_str().ok()).ok_or(m("redirect senza Location", "redirect without Location"))?;
         url = url.join(loc).map_err(|e| e.to_string())?;
     }
-    Err("troppi redirect".into())
+    Err(m("troppi redirect", "too many redirects").into())
 }
 
 /// `metadata.title` può essere una stringa o una lista di stringhe.
@@ -150,17 +151,17 @@ pub fn title_of(meta: &Value) -> Option<String> {
 pub async fn fetch_item(client: &Client, base: &str, auth: Option<&Auth>, id: &str) -> Result<Item, String> {
     let resp = get(client, &format!("{base}/metadata/{id}"), &auth_headers(auth))
         .await
-        .map_err(|e| format!("Errore di rete: {e}"))?;
+        .map_err(|e| format!("{}: {e}", m("Errore di rete", "Network error")))?;
     if !resp.status().is_success() {
-        return Err(format!("Errore HTTP {}", resp.status().as_u16()));
+        return Err(format!("{} {}", m("Errore HTTP", "HTTP error"), resp.status().as_u16()));
     }
-    let meta: Value = resp.json().await.map_err(|e| format!("Risposta non valida: {e}"))?;
+    let meta: Value = resp.json().await.map_err(|e| format!("{}: {e}", m("Risposta non valida", "Invalid response")))?;
     let files = files_from_metadata(&meta);
     if files.is_empty() {
         return Err(if auth.is_some() {
-            "Item vuoto, inesistente o riservato".into()
+            m("Item vuoto, inesistente o riservato", "Item empty, missing or restricted").into()
         } else {
-            "Item vuoto, inesistente o ad accesso ristretto (prova ad accedere)".into()
+            m("Item vuoto, inesistente o ad accesso ristretto (prova ad accedere)", "Item empty, missing or restricted (try logging in)").into()
         });
     }
     Ok(Item { id: id.to_string(), title: title_of(&meta), files })
@@ -170,12 +171,12 @@ pub fn parse_login_response(v: &Value, email: &str) -> Result<Auth, String> {
     if v.get("success").and_then(Value::as_bool) != Some(true) {
         let reason = v.pointer("/values/reason").and_then(Value::as_str).unwrap_or("sconosciuto");
         return Err(match reason {
-            "account_not_found" => "Account inesistente".into(),
-            "account_bad_password" => "Password errata".into(),
-            r => format!("Login fallito ({r})"),
+            "account_not_found" => m("Account inesistente", "Account not found").into(),
+            "account_bad_password" => m("Password errata", "Wrong password").into(),
+            r => format!("{} ({r})", m("Login fallito", "Login failed")),
         });
     }
-    let s = |p: &str| v.pointer(p).and_then(Value::as_str).map(str::to_string).ok_or_else(|| "Risposta di login incompleta".to_string());
+    let s = |p: &str| v.pointer(p).and_then(Value::as_str).map(str::to_string).ok_or_else(|| m("Risposta di login incompleta", "Incomplete login response").to_string());
     Ok(Auth {
         user: s("/values/screenname").unwrap_or_else(|_| email.to_string()),
         cookie_user: s("/values/cookies/logged-in-user")?,
@@ -192,8 +193,8 @@ pub async fn login(client: &Client, base: &str, email: &str, password: &str) -> 
         .form(&[("email", email), ("password", password)])
         .send()
         .await
-        .map_err(|e| format!("Errore di rete: {e}"))?;
-    let v: Value = resp.json().await.map_err(|e| format!("Risposta non valida: {e}"))?;
+        .map_err(|e| format!("{}: {e}", m("Errore di rete", "Network error")))?;
+    let v: Value = resp.json().await.map_err(|e| format!("{}: {e}", m("Risposta non valida", "Invalid response")))?;
     parse_login_response(&v, email)
 }
 

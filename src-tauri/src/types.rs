@@ -10,12 +10,14 @@ pub struct Settings {
     pub default_exts: String,
     /// "system" (segue Windows), "light" o "dark".
     pub theme: String,
+    /// "system" (lingua di Windows), "it" o "en".
+    pub language: String,
 }
 
 impl Default for Settings {
     fn default() -> Self {
         let downloads = dirs::download_dir().unwrap_or_else(|| dirs::home_dir().unwrap_or_default().join("Downloads"));
-        Self { out_dir: downloads.join("archive"), workers: 3, default_originals: true, default_exts: String::new(), theme: "system".into() }
+        Self { out_dir: downloads.join("archive"), workers: 3, default_originals: true, default_exts: String::new(), theme: "system".into(), language: "system".into() }
     }
 }
 

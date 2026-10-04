@@ -1,4 +1,5 @@
 use crate::ia::{self, Auth, FileEntry, Item};
+use crate::i18n::m;
 use crate::search::{self, Filters, SearchResult, SourceIndex};
 use crate::store::write_atomic;
 use serde::{Deserialize, Serialize};
@@ -7,7 +8,9 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-const MISSING: &str = "Elenco mancante, aggiorna la sorgente";
+fn missing() -> &'static str {
+    m("Elenco mancante, aggiorna la sorgente", "File list missing, refresh the source")
+}
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SourceMeta {
@@ -103,16 +106,16 @@ impl Library {
         let file = match std::fs::read(&path) {
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => LibraryFile::default(),
             Err(e) => {
-                warning = Some(format!("Impossibile leggere la libreria ({e}): le modifiche non verranno salvate finché non riavvii l'app"));
-                read_only = Some(format!("Libreria in sola lettura: {e}"));
+                warning = Some(format!("{} ({e}): {}", m("Impossibile leggere la libreria", "Could not read the library"), m("le modifiche non verranno salvate finché non riavvii l'app", "changes will not be saved until you restart the app")));
+                read_only = Some(format!("{}: {e}", m("Libreria in sola lettura", "Library is read-only")));
                 LibraryFile::default()
             }
             Ok(bytes) => serde_json::from_slice(&bytes).unwrap_or_else(|_| {
                 match std::fs::rename(&path, dir.join("library.bak")) {
-                    Ok(()) => warning = Some("Libreria illeggibile: è stata messa da parte come library.bak".to_string()),
+                    Ok(()) => warning = Some(m("Libreria illeggibile: è stata messa da parte come library.bak", "Unreadable library: it was set aside as library.bak").to_string()),
                     Err(e) => {
-                        warning = Some(format!("Libreria illeggibile e non spostabile ({e}): le modifiche non verranno salvate"));
-                        read_only = Some(format!("Libreria in sola lettura: {e}"));
+                        warning = Some(format!("{} ({e}): {}", m("Libreria illeggibile e non spostabile", "Unreadable library that could not be moved"), m("le modifiche non verranno salvate", "changes will not be saved")));
+                        read_only = Some(format!("{}: {e}", m("Libreria in sola lettura", "Library is read-only")));
                     }
                 }
                 LibraryFile::default()
@@ -126,7 +129,7 @@ impl Library {
                 let m = lib.file.sources.get_mut(&id).expect("id preso dalle chiavi");
                 m.file_count = 0;
                 m.total_size = 0;
-                m.error = Some(MISSING.to_string());
+                m.error = Some(missing().to_string());
                 Vec::new()
             });
             lib.index.insert(id.clone(), SourceIndex::new(&id, &files));
@@ -145,13 +148,13 @@ impl Library {
     fn save(&self) -> Result<(), String> {
         self.writable()?;
         let json = serde_json::to_vec_pretty(&self.file).map_err(|e| e.to_string())?;
-        write_atomic(&self.dir.join("library.json"), &json).map_err(|e| format!("Impossibile salvare la libreria: {e}"))
+        write_atomic(&self.dir.join("library.json"), &json).map_err(|e| format!("{}: {e}", m("Impossibile salvare la libreria", "Could not save the library")))
     }
 
     fn save_files(&self, item_id: &str, files: &[FileEntry]) -> Result<(), String> {
         self.writable()?;
         let json = serde_json::to_vec(files).map_err(|e| e.to_string())?;
-        write_atomic(&self.source_path(item_id), &json).map_err(|e| format!("Impossibile salvare la sorgente: {e}"))
+        write_atomic(&self.source_path(item_id), &json).map_err(|e| format!("{}: {e}", m("Impossibile salvare la sorgente", "Could not save the source")))
     }
 
     pub fn take_warning(&mut self) -> Option<String> {
@@ -179,11 +182,11 @@ impl Library {
     fn clean_name(&self, name: &str, except: Option<&str>) -> Result<String, String> {
         let n = name.trim();
         if n.is_empty() {
-            return Err("Nome vuoto".into());
+            return Err(m("Nome vuoto", "Empty name").into());
         }
         let lower = n.to_lowercase();
         if self.file.collections.iter().any(|c| Some(c.id.as_str()) != except && c.name.to_lowercase() == lower) {
-            return Err("Esiste già una raccolta con questo nome".into());
+            return Err(m("Esiste già una raccolta con questo nome", "A collection with this name already exists").into());
         }
         Ok(n.to_string())
     }
@@ -192,7 +195,7 @@ impl Library {
     /// prima di toccare lo stato in memoria.
     fn collection_mut(&mut self, id: &str) -> Result<&mut Collection, String> {
         self.writable()?;
-        self.file.collections.iter_mut().find(|c| c.id == id).ok_or_else(|| "Raccolta non trovata".to_string())
+        self.file.collections.iter_mut().find(|c| c.id == id).ok_or_else(|| m("Raccolta non trovata", "Collection not found").to_string())
     }
 
     pub fn create_collection(&mut self, name: &str) -> Result<String, String> {
@@ -216,7 +219,7 @@ impl Library {
         let before = self.file.collections.len();
         self.file.collections.retain(|c| c.id != id);
         if self.file.collections.len() == before {
-            return Err("Raccolta non trovata".into());
+            return Err(m("Raccolta non trovata", "Collection not found").into());
         }
         self.drop_orphans();
         self.save()
@@ -230,7 +233,7 @@ impl Library {
 
     pub fn set_included(&mut self, collection_id: &str, item_id: &str, included: bool) -> Result<(), String> {
         let c = self.collection_mut(collection_id)?;
-        let r = c.sources.iter_mut().find(|r| r.item_id == item_id).ok_or_else(|| "Sorgente non trovata".to_string())?;
+        let r = c.sources.iter_mut().find(|r| r.item_id == item_id).ok_or_else(|| m("Sorgente non trovata", "Source not found").to_string())?;
         r.included = included;
         self.save()
     }
@@ -298,7 +301,7 @@ impl Library {
                 } else if let Some(m) = self.unsaved.iter_mut().find(|m| m.item_id == item_id) {
                     *m = meta.clone();
                 } else {
-                    return Err("Sorgente non trovata".into());
+                    return Err(m("Sorgente non trovata", "Source not found").into());
                 }
                 self.index.insert(item_id.to_string(), SourceIndex::new(item_id, &item.files));
                 Ok(meta)
@@ -338,14 +341,14 @@ impl Library {
 
     pub fn save_unsaved(&mut self, item_id: &str, collection_id: &str) -> Result<(), String> {
         if !self.unsaved.iter().any(|m| m.item_id == item_id) {
-            return Err("Sorgente non trovata".into());
+            return Err(m("Sorgente non trovata", "Source not found").into());
         }
         self.link_known(collection_id, item_id).map(|_| ())
     }
 
     /// Nome e sorgenti (identificatore, titolo) di una raccolta, nell'ordine in cui sono state aggiunte.
     pub fn export_data(&self, id: &str) -> Result<(String, Vec<(String, Option<String>)>), String> {
-        let c = self.file.collections.iter().find(|c| c.id == id).ok_or_else(|| "Raccolta non trovata".to_string())?;
+        let c = self.file.collections.iter().find(|c| c.id == id).ok_or_else(|| m("Raccolta non trovata", "Collection not found").to_string())?;
         let sources = c.sources.iter().map(|r| (r.item_id.clone(), self.file.sources.get(&r.item_id).and_then(|m| m.title.clone()))).collect();
         Ok((c.name.clone(), sources))
     }
@@ -362,7 +365,7 @@ impl Library {
                 .collections
                 .iter()
                 .find(|c| &c.id == id)
-                .ok_or_else(|| "Raccolta non trovata".to_string())?
+                .ok_or_else(|| m("Raccolta non trovata", "Collection not found").to_string())?
                 .sources
                 .iter()
                 .filter(|r| r.included)
@@ -370,7 +373,7 @@ impl Library {
                 .collect(),
             Scope::Source { item_id } => {
                 if self.known(item_id).is_none() {
-                    return Err("Sorgente non trovata".into());
+                    return Err(m("Sorgente non trovata", "Source not found").into());
                 }
                 vec![item_id.as_str()]
             }
@@ -383,7 +386,7 @@ impl Library {
 
 /// Aggiunge una sorgente a una raccolta: la collega se già nota, altrimenti ne scarica l'elenco.
 pub async fn add_source(lib: &Mutex<Library>, client: &reqwest::Client, base: &str, auth: Option<&Auth>, collection_id: &str, input: &str) -> Result<SourceMeta, String> {
-    let link = ia::parse_link(input).ok_or_else(|| "Link non riconosciuto".to_string())?;
+    let link = ia::parse_link(input).ok_or_else(|| m("Link non riconosciuto", "Link not recognized").to_string())?;
     let known = lib.lock().unwrap().link_known(collection_id, &link.item_id)?;
     if let Some(meta) = known {
         return Ok(meta);
@@ -396,7 +399,7 @@ pub async fn add_source(lib: &Mutex<Library>, client: &reqwest::Client, base: &s
 pub async fn refresh_source(lib: &Mutex<Library>, client: &reqwest::Client, base: &str, auth: Option<&Auth>, item_id: &str) -> Result<SourceMeta, String> {
     let exists = lib.lock().unwrap().known(item_id).is_some();
     if !exists {
-        return Err("Sorgente non trovata".into());
+        return Err(m("Sorgente non trovata", "Source not found").into());
     }
     let fetched = ia::fetch_item(client, base, auth, item_id).await;
     lib.lock().unwrap().apply_refresh(item_id, fetched)
@@ -404,7 +407,7 @@ pub async fn refresh_source(lib: &Mutex<Library>, client: &reqwest::Client, base
 
 /// Apre una sorgente come Non salvata; se è già nota (salvata o aperta) la riusa.
 pub async fn open_unsaved(lib: &Mutex<Library>, client: &reqwest::Client, base: &str, auth: Option<&Auth>, input: &str) -> Result<SourceMeta, String> {
-    let link = ia::parse_link(input).ok_or_else(|| "Link non riconosciuto".to_string())?;
+    let link = ia::parse_link(input).ok_or_else(|| m("Link non riconosciuto", "Link not recognized").to_string())?;
     let known = lib.lock().unwrap().known(&link.item_id);
     if let Some(meta) = known {
         return Ok(meta);

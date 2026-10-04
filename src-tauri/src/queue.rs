@@ -1,4 +1,5 @@
 use crate::download::{self, dest_for, part_path, Finish, Request};
+use crate::i18n::m;
 use crate::ia::{self, Auth};
 use crate::types::{Job, JobStatus, NewFile, Settings};
 use serde::Serialize;
@@ -358,7 +359,7 @@ impl Queue {
                             j.status = JobStatus::Paused;
                         }
                     }
-                    alert = Some(format!("Download in pausa per un problema di disco: {msg}"));
+                    alert = Some(format!("{}: {msg}", m("Download in pausa per un problema di disco", "Downloads paused because of a disk problem")));
                 }
             }
         }

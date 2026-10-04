@@ -1,4 +1,5 @@
 use crate::ia;
+use crate::i18n::m;
 use crate::import::{self, ParsedList};
 use crate::library::{self, Library, LibraryState, Scope, SourceMeta};
 use crate::search::{self, Filters, SearchResult};
@@ -58,7 +59,7 @@ pub fn clear_completed(state: State<'_, AppState>) { state.queue.clear_completed
 pub fn set_settings(state: State<'_, AppState>, settings: Settings) -> Result<(), String> {
     let mut s = settings;
     s.workers = s.workers.clamp(1, 8);
-    store::save_settings(&state.data_dir, &s).map_err(|e| format!("Impossibile salvare le impostazioni: {e}"))?;
+    store::save_settings(&state.data_dir, &s).map_err(|e| format!("{}: {e}", m("Impossibile salvare le impostazioni", "Could not save settings")))?;
     *state.queue.settings.lock().unwrap() = s;
     state.queue.pump();
     Ok(())
@@ -71,11 +72,11 @@ pub async fn pick_folder(app: AppHandle) -> Result<Option<String>, String> {
 
 #[tauri::command]
 pub fn open_folder(app: AppHandle, state: State<'_, AppState>, id: u64) -> Result<(), String> {
-    let job = state.queue.jobs().into_iter().find(|j| j.id == id).ok_or("File non più in coda")?;
+    let job = state.queue.jobs().into_iter().find(|j| j.id == id).ok_or(m("File non più in coda", "File no longer in the queue"))?;
     if job.dest.exists() {
         app.opener().reveal_item_in_dir(&job.dest).map_err(|e| e.to_string())
     } else {
-        let dir = job.dest.parent().ok_or("Cartella non valida")?;
+        let dir = job.dest.parent().ok_or(m("Cartella non valida", "Invalid folder"))?;
         app.opener().open_path(dir.to_string_lossy(), None::<&str>).map_err(|e| e.to_string())
     }
 }
@@ -201,6 +202,12 @@ pub async fn export_collection(app: AppHandle, state: State<'_, AppState>, id: S
     let safe: String = name.chars().map(|c| if r#"<>:"/\|?*"#.contains(c) { '_' } else { c }).collect();
     let Some(file) = app.dialog().file().add_filter("Lista di sorgenti", &["txt"]).set_file_name(format!("{safe}.txt")).blocking_save_file() else { return Ok(None) };
     let path = file.into_path().map_err(|e| e.to_string())?;
-    std::fs::write(&path, import::format_list(&name, &sources)).map_err(|e| format!("Impossibile salvare il file: {e}"))?;
+    std::fs::write(&path, import::format_list(&name, &sources)).map_err(|e| format!("{}: {e}", m("Impossibile salvare il file", "Could not save the file")))?;
     Ok(Some(path.to_string_lossy().into_owned()))
+}
+
+/// La lingua effettiva ("it" o "en") decisa dall'interfaccia, per i messaggi del motore.
+#[tauri::command]
+pub fn set_ui_language(lang: String) {
+    crate::i18n::set_language(&lang);
 }
