@@ -19,7 +19,8 @@ export function duration(s: number): string {
 
 /** Gli URL archive.org contenuti nel testo, nell'ordine in cui compaiono. */
 export function extractLinks(text: string): string[] {
-  return text.match(/https?:\/\/(?:www\.)?archive\.org\/\S+/g) ?? [];
+  // La punteggiatura finale ("…/details/foo." in una frase) non fa parte del link.
+  return (text.match(/https?:\/\/(?:www\.)?archive\.org\/\S+/g) ?? []).map((l) => l.replace(/[.,;:!?)\]}>"']+$/, ""));
 }
 
 export function formatDate(unix: number): string {

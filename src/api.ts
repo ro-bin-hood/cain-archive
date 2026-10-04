@@ -20,8 +20,10 @@ export type SourceView = SourceMeta & { included: boolean };
 export type CollectionView = { id: string; name: string; sources: SourceView[] };
 export type LibraryState = { collections: CollectionView[]; unsaved: SourceMeta[] };
 export type Scope = { kind: "all" } | { kind: "collection"; id: string } | { kind: "source"; item_id: string } | { kind: "unsaved" };
-export type Hit = { item_id: string; name: string; size: number; original: boolean };
-export type SearchResult = { results: Hit[]; total: number };
+export type Hit = { item_id: string; name: string; size: number; original: boolean; local: "downloaded" | "queued" | null };
+export type SearchResult = { results: Hit[]; total: number; extensions: { ext: string; count: number }[] };
+export type Sort = "name" | "size_desc" | "size_asc";
+export type Filters = { originals_only: boolean; exts: string[]; sort: Sort };
 export type ParsedList = { name: string | null; inputs: string[]; invalid: string[] };
 export type NewFile = { item_id: string; name: string; size: number };
 
@@ -55,7 +57,7 @@ export const api = {
   readImportFile: (path: string) => invoke<ParsedList>("read_import_file", { path }),
   pickImportFile: () => invoke<ParsedList | null>("pick_import_file"),
   exportCollection: (id: string) => invoke<string | null>("export_collection", { id }),
-  search: (scope: Scope, query: string, originalsOnly: boolean) => invoke<SearchResult>("search", { scope, query, originalsOnly }),
+  search: (scope: Scope, query: string, filters: Filters) => invoke<SearchResult>("search", { scope, query, filters }),
 };
 
 export const events = {

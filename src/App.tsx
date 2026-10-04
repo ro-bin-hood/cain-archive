@@ -208,6 +208,7 @@ export default function App() {
             <SearchView
               scope={view.scope}
               lib={lib}
+              jobs={q.jobs}
               query={query}
               onQuery={setQuery}
               defaultOriginals={settings.default_originals}

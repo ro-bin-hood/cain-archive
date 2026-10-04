@@ -88,3 +88,4 @@ body.resizing{cursor:col-resize;user-select:none}
 .drop-overlay>div{border:2px dashed var(--ac);border-radius:16px;padding:28px 40px;background:var(--card);color:var(--ac);font-size:15px;font-weight:600}
 /* Risultati: nome a sinistra; sigla e dimensione come colonne allineate a destra */
 .results .size{width:64px;text-align:right;flex:none}
+.sort{padding:4px 8px;font-size:12px;border-radius:8px}

@@ -29,6 +29,8 @@ function Row({ hit, tag, checked, words, onToggle }: Props) {
     <label className="item-row" style={{ cursor: "pointer" }}>
       <input type="checkbox" className="check" checked={checked} onChange={() => onToggle(hit)} />
       <span className={`grow name ${hit.original ? "" : "muted"}`} title={hit.name}>{highlight(hit.name, words)}</span>
+      {hit.local === "downloaded" && <span className="small ok" title="Già presente nella cartella di destinazione">✔ scaricato</span>}
+      {hit.local === "queued" && <span className="small muted" title="Già nella coda">in coda</span>}
       <span className="src" title={hit.item_id}>{tag}</span>
       <span className="muted small size">{hit.size ? human(hit.size) : "?"}</span>
     </label>
