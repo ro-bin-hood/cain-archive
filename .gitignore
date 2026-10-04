@@ -1,0 +1,27 @@
+# Claude (Claude Code, superpowers: piani, spec, screenshot di lavoro)
+.claude/
+CLAUDE.md
+CLAUDE_*
+.superpowers/
+docs/superpowers/
+
+# App Tauri
+node_modules/
+dist/
+dist-ssr/
+*.local
+src-tauri/target/
+src-tauri/gen/
+
+# Vecchia versione Python
+old_ied/dist/
+old_ied/build/
+__pycache__/
+*.spec
+
+# Log ed editor
+*.log
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
