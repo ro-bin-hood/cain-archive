@@ -33,9 +33,9 @@ Files are saved to `<destination>/<identifier>/<path>`. The default destination 
 
 ## Install
 
-Download the installer (`Cain Archive_x.y.z_x64-setup.exe`) from the [Releases](../../releases) page.
+Download the installer (`Cain Archive_x.y.z_x64-setup.exe`) from the [Releases](../../releases) page. A portable zip (`Cain-Archive_x.y.z_x64-portable.zip`) is also available: unzip it anywhere and run `Cain Archive.exe`, nothing gets installed.
 
-The installer is not code-signed, so Windows SmartScreen may warn you: choose *More info → Run anyway*. The app needs WebView2, which is preinstalled on Windows 11.
+The files are not code-signed, so Windows SmartScreen may warn you: choose *More info → Run anyway*. The app needs WebView2, which is preinstalled on Windows 11.
 
 ## Development
 
