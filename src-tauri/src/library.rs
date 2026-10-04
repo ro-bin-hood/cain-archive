@@ -1,5 +1,5 @@
 use crate::ia::{self, Auth, FileEntry, Item};
-use crate::search::{self, SearchResult, SourceIndex};
+use crate::search::{self, Filters, SearchResult, SourceIndex};
 use crate::store::write_atomic;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -351,6 +351,10 @@ impl Library {
     }
 
     pub fn search(&self, scope: &Scope, query: &str, originals_only: bool) -> Result<SearchResult, String> {
+        self.search_with(scope, query, &Filters { originals_only, ..Filters::default() })
+    }
+
+    pub fn search_with(&self, scope: &Scope, query: &str, filters: &Filters) -> Result<SearchResult, String> {
         let ids: Vec<&str> = match scope {
             Scope::All => self.file.collections.iter().flat_map(|c| c.sources.iter().map(|r| r.item_id.as_str())).collect(),
             Scope::Collection { id } => self
@@ -373,7 +377,7 @@ impl Library {
             Scope::Unsaved => self.unsaved.iter().map(|m| m.item_id.as_str()).collect(),
         };
         let sources: Vec<&SourceIndex> = ids.iter().filter_map(|id| self.index.get(*id)).collect();
-        Ok(search::search(&sources, query, originals_only))
+        Ok(search::search_with(&sources, query, filters))
     }
 }
 

@@ -1,7 +1,7 @@
 use crate::ia;
 use crate::import::{self, ParsedList};
 use crate::library::{self, Library, LibraryState, Scope, SourceMeta};
-use crate::search::SearchResult;
+use crate::search::{self, Filters, SearchResult};
 use crate::queue::Queue;
 use crate::store;
 use crate::types::{Job, NewFile, Settings};
@@ -173,8 +173,11 @@ pub fn save_unsaved(state: State<'_, AppState>, item_id: String, collection_id: 
 }
 
 #[tauri::command(async)]
-pub fn search(state: State<'_, AppState>, scope: Scope, query: String, originals_only: bool) -> Result<SearchResult, String> {
-    state.library.lock().unwrap().search(&scope, &query, originals_only)
+pub fn search(state: State<'_, AppState>, scope: Scope, query: String, filters: Filters) -> Result<SearchResult, String> {
+    let mut result = state.library.lock().unwrap().search_with(&scope, &query, &filters)?;
+    let out_dir = state.queue.settings.lock().unwrap().out_dir.clone();
+    search::mark_local(&mut result.results, &state.queue.jobs(), &out_dir);
+    Ok(result)
 }
 
 /// Sceglie un file di lista e lo legge; il nome mancante diventa il nome del file.
