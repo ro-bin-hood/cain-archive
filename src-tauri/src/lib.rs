@@ -1,6 +1,7 @@
 pub mod download;
 pub mod ia;
 pub mod queue;
+pub mod search;
 pub mod store;
 pub mod types;
 mod commands;
