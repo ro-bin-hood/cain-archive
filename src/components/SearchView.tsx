@@ -29,9 +29,9 @@ export function SearchView({ scope, lib, jobs, query, onQuery, defaultOriginals,
 
   const words = useMemo(() => query.toLowerCase().split(/\s+/).filter(Boolean), [query]);
 
-  // La selezione vale per un ambito e una query: cambiandoli si svuota. I filtri per estensione
+  // La selezione resta attraverso ricerche e ambiti diversi, così si compone da più ricerche;
+  // i file selezionati che ora non si vedono sono contati a parte. I filtri per estensione
   // dipendono dall'ambito, quindi ripartono da zero quando lo si cambia.
-  useEffect(() => setSelected(new Map()), [scope, query]);
   useEffect(() => setExts([]), [scope]);
 
   // Ricerca 150 ms dopo l'ultima modifica; si ripete quando cambiano la libreria (sorgenti
@@ -45,9 +45,6 @@ export function SearchView({ scope, lib, jobs, query, onQuery, defaultOriginals,
           if (!alive) return;
           setResult(r);
           setPending(false);
-          // Restano selezionati solo i file ancora visibili (filtri, sorgenti escluse…).
-          const keys = new Set(r.results.map(hitKey));
-          setSelected((s) => (s.size && [...s.keys()].some((k) => !keys.has(k)) ? new Map([...s].filter(([k]) => keys.has(k))) : s));
         })
         .catch((e) => alive && onError(String(e)));
     }, 150);
@@ -124,6 +121,8 @@ export function SearchView({ scope, lib, jobs, query, onQuery, defaultOriginals,
   // Chip: le estensioni presenti, più quelle attive anche se ora non ne compaiono.
   const extChips = [...(result?.extensions ?? []).map((e) => ({ ext: e.ext, count: e.count as number | null }))];
   for (const e of exts) if (!extChips.some((c) => c.ext === e)) extChips.push({ ext: e, count: null });
+  const shownKeys = new Set(shown.map(hitKey));
+  const elsewhere = [...selected.keys()].filter((k) => !shownKeys.has(k)).length;
   // "Tutti" salta i file già scaricati o già in coda.
   const selectable = shown.filter((h) => !h.local);
 
@@ -139,10 +138,11 @@ export function SearchView({ scope, lib, jobs, query, onQuery, defaultOriginals,
           </span>
         )}
         <div className="grow" />
-        <button className="muted small" disabled={pending || !selectable.length} title={t("Seleziona i risultati non ancora scaricati né in coda")}
-          onClick={() => setSelected(new Map(selectable.map((h) => [hitKey(h), h])))}>{t("Tutti")}</button>
+        <button className="muted small" disabled={pending || !selectable.length} title={t("Aggiungi alla selezione i risultati non ancora scaricati né in coda")}
+          onClick={() => setSelected((s) => new Map([...s, ...selectable.map((h) => [hitKey(h), h] as const)]))}>{t("Tutti")}</button>
         <span className="muted small">·</span>
         <button className="muted small" onClick={() => setSelected(new Map())}>{t("Nessuno")}</button>
+        {elsewhere > 0 && <span className="muted small" title={t("File selezionati in altre ricerche, non visibili qui")}>{t("+{n} da altre ricerche", { n: elsewhere })}</span>}
         <button className="btn small" disabled={!selected.size || pending} onClick={enqueue}>{t("Aggiungi {n} alla coda", { n: selected.size })}</button>
       </div>
       <div className="row" style={{ flexWrap: "wrap", gap: 6 }}>
