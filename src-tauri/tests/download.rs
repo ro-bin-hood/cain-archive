@@ -94,6 +94,19 @@ async fn resumes_after_connection_drop() {
     assert_eq!(srv.ranges.lock().unwrap().len(), 1, "il secondo tentativo deve riprendere con Range");
 }
 
+/// Un file grande che cade più di 3 volte ma avanza ogni volta non deve fallire.
+#[tokio::test]
+async fn attempts_reset_when_a_drop_still_made_progress() {
+    let (base, _) = common::start().await;
+    let d = tempfile::tempdir().unwrap();
+    let body = common::content("dropmany", "f.bin");
+    let (f, retries) = run(&base, "dropmany", "f.bin", d.path(), len(&body), CancellationToken::new()).await;
+    assert_eq!(f, Finish::Done(body.len() as u64));
+    assert_eq!(std::fs::read(d.path().join("f.bin")).unwrap(), body);
+    assert_eq!(retries.len(), 4);
+    assert!(retries.iter().all(|(a, _)| *a == 1), "ogni caduta con progressi riparte dal tentativo 1: {retries:?}");
+}
+
 #[tokio::test]
 async fn forbidden_and_not_found_fail_immediately() {
     let (base, _) = common::start().await;

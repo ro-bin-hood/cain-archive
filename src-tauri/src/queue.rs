@@ -2,7 +2,7 @@ use crate::download::{self, dest_for, part_path, Finish, Request};
 use crate::ia::{self, Auth};
 use crate::types::{Job, JobStatus, NewFile, Settings};
 use serde::Serialize;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -25,6 +25,15 @@ pub struct Snapshot {
     pub eta_s: Option<u64>,
 }
 
+/// Byte fatti e totali del lavoro in corso: completati, attivi e in coda. I job in pausa o
+/// falliti non contano, altrimenti tempo stimato e percentuale risultano falsati.
+fn totals(jobs: &[Job], live_done: u64) -> (u64, u64) {
+    let counted = |j: &&Job| !matches!(j.status, JobStatus::Paused | JobStatus::Failed { .. });
+    let total = jobs.iter().filter(counted).map(|j| j.size).sum();
+    let done = jobs.iter().filter(|j| j.status == JobStatus::Done).map(|j| j.size).sum::<u64>() + live_done;
+    (done, total)
+}
+
 pub trait Sink: Send + Sync + 'static {
     fn changed(&self, jobs: &[Job], running: bool);
     fn progress(&self, snap: &Snapshot);
@@ -45,6 +54,9 @@ struct Inner {
     running: bool,
     active: HashMap<u64, CancellationToken>,
     live: HashMap<u64, Live>,
+    /// Job fermati (token annullato) ma riavviati prima che il task se ne accorgesse:
+    /// quando il task termina tornano in coda invece che in pausa.
+    restart: HashSet<u64>,
     dirty: bool,
     changed: bool,
 }
@@ -80,7 +92,7 @@ pub struct Queue {
 impl Queue {
     pub fn new(jobs: Vec<Job>, settings: Settings, auth: Option<Auth>, sink: Arc<dyn Sink>, base_url: &str) -> Self {
         let next_id = jobs.iter().map(|j| j.id).max().unwrap_or(0) + 1;
-        let inner = Inner { jobs, next_id, running: false, active: HashMap::new(), live: HashMap::new(), dirty: false, changed: false };
+        let inner = Inner { jobs, next_id, running: false, active: HashMap::new(), live: HashMap::new(), restart: HashSet::new(), dirty: false, changed: false };
         Self {
             inner: Arc::new(Mutex::new(inner)),
             sink,
@@ -138,11 +150,17 @@ impl Queue {
 
     pub fn start(&self) {
         {
-            let mut i = self.inner.lock().unwrap();
+            let mut g = self.inner.lock().unwrap();
+            let i = &mut *g;
             i.running = true;
             for j in &mut i.jobs {
                 if j.status == JobStatus::Paused {
                     j.status = JobStatus::Queued;
+                }
+            }
+            for (id, t) in &i.active {
+                if t.is_cancelled() {
+                    i.restart.insert(*id);
                 }
             }
         }
@@ -154,6 +172,7 @@ impl Queue {
         {
             let mut i = self.inner.lock().unwrap();
             i.running = false;
+            i.restart.clear();
             for t in i.active.values() {
                 t.cancel();
             }
@@ -187,6 +206,7 @@ impl Queue {
     pub fn pause_job(&self, id: u64) {
         {
             let mut i = self.inner.lock().unwrap();
+            i.restart.remove(&id);
             if let Some(t) = i.active.get(&id) {
                 t.cancel();
             } else if let Some(j) = i.jobs.iter_mut().find(|j| j.id == id && j.status == JobStatus::Queued) {
@@ -200,7 +220,10 @@ impl Queue {
     pub fn resume_job(&self, id: u64) {
         {
             let mut i = self.inner.lock().unwrap();
-            if let Some(j) = i.jobs.iter_mut().find(|j| j.id == id && matches!(j.status, JobStatus::Paused | JobStatus::Failed { .. })) {
+            if i.active.get(&id).is_some_and(|t| t.is_cancelled()) {
+                i.restart.insert(id);
+                i.running = true;
+            } else if let Some(j) = i.jobs.iter_mut().find(|j| j.id == id && matches!(j.status, JobStatus::Paused | JobStatus::Failed { .. })) {
                 j.status = JobStatus::Queued;
                 i.running = true;
             }
@@ -320,7 +343,9 @@ impl Queue {
                         j.size = n;
                     }
                 }
-                (Finish::Cancelled, Some(p)) => i.jobs[p].status = JobStatus::Paused,
+                (Finish::Cancelled, Some(p)) => {
+                    i.jobs[p].status = if i.restart.remove(&id) { JobStatus::Queued } else { JobStatus::Paused };
+                }
                 (Finish::Failed(reason), Some(p)) => i.jobs[p].status = JobStatus::Failed { reason },
                 (Finish::Disk(msg), Some(p)) => {
                     i.jobs[p].status = JobStatus::Paused;
@@ -374,11 +399,32 @@ impl Queue {
             }
             jobs.push(JobProgress { id, done: l.done, total: l.total, speed: l.speed });
         }
-        let total: u64 = i.jobs.iter().filter(|j| !matches!(j.status, JobStatus::Failed { .. })).map(|j| j.size).sum();
-        let done: u64 = i.jobs.iter().filter(|j| j.status == JobStatus::Done).map(|j| j.size).sum::<u64>()
-            + jobs.iter().map(|p| p.done).sum::<u64>();
+        let (done, total) = totals(&i.jobs, jobs.iter().map(|p| p.done).sum());
         let speed: f64 = jobs.iter().map(|p| p.speed).sum();
         let eta_s = (i.running && speed > 0.0 && total > done).then(|| ((total - done) as f64 / speed) as u64);
         Some(Snapshot { jobs, done, total, speed, eta_s })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    fn job(id: u64, size: u64, status: JobStatus) -> Job {
+        Job { id, item_id: "i".into(), name: format!("f{id}"), size, dest: PathBuf::from(format!("C:/x/f{id}")), status }
+    }
+
+    /// I file in pausa o falliti non fanno parte del lavoro in corso: non contano nel totale.
+    #[test]
+    fn totals_ignore_paused_and_failed_jobs() {
+        let jobs = vec![
+            job(1, 100, JobStatus::Done),
+            job(2, 1000, JobStatus::Paused),
+            job(3, 50, JobStatus::Queued),
+            job(4, 10, JobStatus::Failed { reason: "x".into() }),
+            job(5, 200, JobStatus::Downloading),
+        ];
+        assert_eq!(totals(&jobs, 20), (120, 350));
     }
 }

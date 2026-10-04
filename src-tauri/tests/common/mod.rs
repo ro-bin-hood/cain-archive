@@ -73,6 +73,19 @@ async fn download(State(s): State<Srv>, Path((item, name)): Path<(String, String
                 });
             Response::builder().header(header::CONTENT_LENGTH, len).body(Body::from_stream(stream)).unwrap()
         }
+        "dropmany" if hit <= 4 => {
+            let len = body.len();
+            let start = range.as_deref().and_then(|r| r.strip_prefix("bytes=")).and_then(|r| r.strip_suffix('-')).and_then(|n| n.parse::<usize>().ok()).unwrap_or(0);
+            let piece = body[start..(start + len / 5).min(len)].to_vec();
+            let stream = futures_util::stream::iter(vec![Ok::<_, std::io::Error>(piece), Err(std::io::Error::other("drop"))]).then(|r| async move {
+                if r.is_err() {
+                    tokio::time::sleep(Duration::from_millis(200)).await;
+                }
+                r
+            });
+            let status = if start > 0 { StatusCode::PARTIAL_CONTENT } else { StatusCode::OK };
+            Response::builder().status(status).header(header::CONTENT_LENGTH, len - start).body(Body::from_stream(stream)).unwrap()
+        }
         "slow" => respond(body, range.as_deref(), true),
         _ => respond(body, range.as_deref(), false),
     }

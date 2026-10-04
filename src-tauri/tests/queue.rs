@@ -194,3 +194,18 @@ async fn changes_are_batched_and_last_one_is_final() {
     let (jobs, running) = ch.last().unwrap();
     assert!(!running && jobs.len() == 60 && jobs.iter().all(|j| j.status == JobStatus::Done));
 }
+
+/// Stop e subito Avvia, prima che i download si siano davvero fermati: devono ripartire.
+#[tokio::test]
+async fn stop_then_immediate_start_resumes() {
+    let (base, _) = common::start().await;
+    let d = tempfile::tempdir().unwrap();
+    let q = queue(&base, d.path(), None);
+    q.enqueue(vec![nf("slow", "f.bin")]);
+    q.start();
+    let part = d.path().join("slow/f.bin.part");
+    wait_for(&q, ".part creato", |_| std::fs::metadata(&part).map(|m| m.len() > 0).unwrap_or(false)).await;
+    q.stop();
+    q.start();
+    wait_for(&q, "Done", all(JobStatus::Done)).await;
+}

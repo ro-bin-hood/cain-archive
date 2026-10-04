@@ -181,18 +181,25 @@ pub async fn download(
     on_progress: &(dyn Fn(u64, Option<u64>) + Send + Sync),
     on_retry: &(dyn Fn(u32, u64) + Send + Sync),
 ) -> Finish {
-    for n in 1..=MAX_ATTEMPTS {
+    let part = part_path(req.dest);
+    let part_len = || std::fs::metadata(&part).map(|m| m.len()).unwrap_or(0);
+    // Fallimenti consecutivi senza progressi: una caduta che ha comunque scaricato dei byte
+    // riparte dal primo tentativo, così un file grande non fallisce per tre interruzioni in un'ora.
+    let mut failures = 0;
+    loop {
+        let before = part_len();
         match attempt(req, cancel, on_progress).await {
             Ok(len) => return Finish::Done(len),
             Err(AttemptError::Cancelled) => return Finish::Cancelled,
             Err(AttemptError::Fatal(m)) => return Finish::Failed(m),
             Err(AttemptError::Disk(m)) => return Finish::Disk(m),
             Err(AttemptError::Retryable { msg, retry_after }) => {
-                if n == MAX_ATTEMPTS {
+                failures = if part_len() > before { 1 } else { failures + 1 };
+                if failures >= MAX_ATTEMPTS {
                     return Finish::Failed(msg);
                 }
-                let wait = retry_delay(n, retry_after, req.retry_base_s);
-                on_retry(n, wait);
+                let wait = retry_delay(failures, retry_after, req.retry_base_s);
+                on_retry(failures, wait);
                 tokio::select! {
                     _ = tokio::time::sleep(Duration::from_secs(wait)) => {}
                     _ = cancel.cancelled() => return Finish::Cancelled,
@@ -200,7 +207,6 @@ pub async fn download(
             }
         }
     }
-    unreachable!("il ciclo termina sempre con un return")
 }
 
 #[cfg(test)]
