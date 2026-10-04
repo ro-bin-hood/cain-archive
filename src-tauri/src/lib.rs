@@ -53,7 +53,8 @@ pub fn run() {
             let sink = TauriSink { app: app.handle().clone(), dir: dir.clone(), save_lock: Mutex::new(()) };
             let queue = Queue::new(store::load_queue(&dir), store::load_settings(&dir), store::load_auth(&dir), Arc::new(sink), ia::BASE_URL);
             tauri::async_runtime::spawn(queue.clone().ticker());
-            app.manage(AppState { queue, data_dir: dir });
+            let library = std::sync::Mutex::new(library::Library::load(&dir));
+            app.manage(AppState { queue, library, data_dir: dir });
             Ok(())
         })
         .on_window_event(|w, e| {
@@ -63,7 +64,6 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::get_state,
-            commands::analyze_links,
             commands::enqueue,
             commands::start,
             commands::stop,
@@ -77,6 +77,19 @@ pub fn run() {
             commands::open_folder,
             commands::login,
             commands::logout,
+            commands::library_state,
+            commands::take_library_warning,
+            commands::create_collection,
+            commands::rename_collection,
+            commands::delete_collection,
+            commands::add_source,
+            commands::remove_source,
+            commands::set_included,
+            commands::refresh_source,
+            commands::open_unsaved,
+            commands::close_unsaved,
+            commands::save_unsaved,
+            commands::search,
         ])
         .run(tauri::generate_context!())
         .expect("errore all'avvio di Cain Archive");

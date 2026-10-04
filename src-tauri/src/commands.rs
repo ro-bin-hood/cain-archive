@@ -1,23 +1,20 @@
-use crate::ia::{self, FileEntry, Item};
+use crate::ia;
+use crate::library::{self, Library, LibraryState, Scope, SourceMeta};
+use crate::search::SearchResult;
 use crate::queue::Queue;
 use crate::store;
 use crate::types::{Job, NewFile, Settings};
 use serde::Serialize;
 use std::path::PathBuf;
+use std::sync::Mutex;
 use tauri::{AppHandle, State};
 use tauri_plugin_dialog::DialogExt;
 use tauri_plugin_opener::OpenerExt;
 
 pub struct AppState {
     pub queue: Queue,
+    pub library: Mutex<Library>,
     pub data_dir: PathBuf,
-}
-
-#[derive(Serialize)]
-pub struct Analyzed {
-    pub input: String,
-    pub item: Option<Item>,
-    pub error: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -37,30 +34,6 @@ pub fn get_state(state: State<'_, AppState>) -> FullState {
         jobs: q.jobs(),
         running: q.running(),
     }
-}
-
-#[tauri::command]
-pub async fn analyze_links(state: State<'_, AppState>, text: String) -> Result<Vec<Analyzed>, String> {
-    let q = &state.queue;
-    let auth = q.auth.lock().unwrap().clone();
-    let mut out = Vec::new();
-    for line in text.lines().map(str::trim).filter(|l| !l.is_empty()) {
-        let Some(link) = ia::parse_link(line) else {
-            out.push(Analyzed { input: line.into(), item: None, error: Some("Link non riconosciuto".into()) });
-            continue;
-        };
-        match ia::fetch_item(q.client(), q.base_url(), auth.as_ref(), &link.item_id).await {
-            Ok(mut item) => {
-                if let Some(f) = &link.file {
-                    let found = item.files.iter().find(|x| &x.name == f).cloned();
-                    item.files = vec![found.unwrap_or(FileEntry { name: f.clone(), size: 0, format: String::new(), original: true })];
-                }
-                out.push(Analyzed { input: line.into(), item: Some(item), error: None });
-            }
-            Err(e) => out.push(Analyzed { input: line.into(), item: None, error: Some(e) }),
-        }
-    }
-    Ok(out)
 }
 
 #[tauri::command]
@@ -120,4 +93,83 @@ pub async fn login(state: State<'_, AppState>, email: String, password: String) 
 pub fn logout(state: State<'_, AppState>) {
     store::clear_auth(&state.data_dir);
     *state.queue.auth.lock().unwrap() = None;
+}
+
+fn lib_state(state: &State<'_, AppState>) -> LibraryState {
+    state.library.lock().unwrap().state()
+}
+
+#[tauri::command]
+pub fn library_state(state: State<'_, AppState>) -> LibraryState {
+    lib_state(&state)
+}
+
+#[tauri::command]
+pub fn take_library_warning(state: State<'_, AppState>) -> Option<String> {
+    state.library.lock().unwrap().take_warning()
+}
+
+#[tauri::command]
+pub fn create_collection(state: State<'_, AppState>, name: String) -> Result<LibraryState, String> {
+    state.library.lock().unwrap().create_collection(&name)?;
+    Ok(lib_state(&state))
+}
+
+#[tauri::command]
+pub fn rename_collection(state: State<'_, AppState>, id: String, name: String) -> Result<LibraryState, String> {
+    state.library.lock().unwrap().rename_collection(&id, &name)?;
+    Ok(lib_state(&state))
+}
+
+#[tauri::command]
+pub fn delete_collection(state: State<'_, AppState>, id: String) -> Result<LibraryState, String> {
+    state.library.lock().unwrap().delete_collection(&id)?;
+    Ok(lib_state(&state))
+}
+
+#[tauri::command]
+pub async fn add_source(state: State<'_, AppState>, collection_id: String, input: String) -> Result<SourceMeta, String> {
+    let auth = state.queue.auth.lock().unwrap().clone();
+    library::add_source(&state.library, state.queue.client(), state.queue.base_url(), auth.as_ref(), &collection_id, &input).await
+}
+
+#[tauri::command]
+pub fn remove_source(state: State<'_, AppState>, collection_id: String, item_id: String) -> Result<LibraryState, String> {
+    state.library.lock().unwrap().remove_source(&collection_id, &item_id)?;
+    Ok(lib_state(&state))
+}
+
+#[tauri::command]
+pub fn set_included(state: State<'_, AppState>, collection_id: String, item_id: String, included: bool) -> Result<LibraryState, String> {
+    state.library.lock().unwrap().set_included(&collection_id, &item_id, included)?;
+    Ok(lib_state(&state))
+}
+
+#[tauri::command]
+pub async fn refresh_source(state: State<'_, AppState>, item_id: String) -> Result<SourceMeta, String> {
+    let auth = state.queue.auth.lock().unwrap().clone();
+    library::refresh_source(&state.library, state.queue.client(), state.queue.base_url(), auth.as_ref(), &item_id).await
+}
+
+#[tauri::command]
+pub async fn open_unsaved(state: State<'_, AppState>, input: String) -> Result<SourceMeta, String> {
+    let auth = state.queue.auth.lock().unwrap().clone();
+    library::open_unsaved(&state.library, state.queue.client(), state.queue.base_url(), auth.as_ref(), &input).await
+}
+
+#[tauri::command]
+pub fn close_unsaved(state: State<'_, AppState>, item_id: String) -> LibraryState {
+    state.library.lock().unwrap().close_unsaved(&item_id);
+    lib_state(&state)
+}
+
+#[tauri::command]
+pub fn save_unsaved(state: State<'_, AppState>, item_id: String, collection_id: String) -> Result<LibraryState, String> {
+    state.library.lock().unwrap().save_unsaved(&item_id, &collection_id)?;
+    Ok(lib_state(&state))
+}
+
+#[tauri::command]
+pub fn search(state: State<'_, AppState>, scope: Scope, query: String, originals_only: bool) -> Result<SearchResult, String> {
+    state.library.lock().unwrap().search(&scope, &query, originals_only)
 }
