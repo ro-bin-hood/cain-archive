@@ -1,3 +1,5 @@
+<p align="center"><img src="app-icon.svg" width="160" alt="Cain Archive logo"></p>
+
 # Cain Archive
 
 *Stay awhile and download…*

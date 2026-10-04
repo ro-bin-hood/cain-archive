@@ -113,3 +113,6 @@ body.dragging-row,body.dragging-row *{cursor:grabbing !important}
 .sidebar .drop-end-line{height:2px;background:var(--ac);margin:0 8px}
 .sidebar .side-item .grab{visibility:hidden}
 .sidebar .side-item:hover .grab{visibility:visible}
+/* The monochrome logo turns white in the dark theme */
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .logo{filter:invert(1) brightness(.95)}}
+:root[data-theme="dark"] .logo{filter:invert(1) brightness(.95)}
