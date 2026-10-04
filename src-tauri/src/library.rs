@@ -1,9 +1,10 @@
-use crate::ia::{FileEntry, Item};
+use crate::ia::{self, Auth, FileEntry, Item};
 use crate::search::{self, SearchResult, SourceIndex};
 use crate::store::write_atomic;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 const MISSING: &str = "Elenco mancante, aggiorna la sorgente";
@@ -337,6 +338,38 @@ impl Library {
         let sources: Vec<&SourceIndex> = ids.iter().filter_map(|id| self.index.get(*id)).collect();
         Ok(search::search(&sources, query, originals_only))
     }
+}
+
+/// Aggiunge una sorgente a una raccolta: la collega se già nota, altrimenti ne scarica l'elenco.
+pub async fn add_source(lib: &Mutex<Library>, client: &reqwest::Client, base: &str, auth: Option<&Auth>, collection_id: &str, input: &str) -> Result<SourceMeta, String> {
+    let link = ia::parse_link(input).ok_or_else(|| "Link non riconosciuto".to_string())?;
+    let known = lib.lock().unwrap().link_known(collection_id, &link.item_id)?;
+    if let Some(meta) = known {
+        return Ok(meta);
+    }
+    let item = ia::fetch_item(client, base, auth, &link.item_id).await?;
+    lib.lock().unwrap().add_fetched(collection_id, item)
+}
+
+/// Riscarica l'elenco; se fallisce resta quello vecchio e l'errore viene registrato.
+pub async fn refresh_source(lib: &Mutex<Library>, client: &reqwest::Client, base: &str, auth: Option<&Auth>, item_id: &str) -> Result<SourceMeta, String> {
+    let exists = lib.lock().unwrap().known(item_id).is_some();
+    if !exists {
+        return Err("Sorgente non trovata".into());
+    }
+    let fetched = ia::fetch_item(client, base, auth, item_id).await;
+    lib.lock().unwrap().apply_refresh(item_id, fetched)
+}
+
+/// Apre una sorgente come Non salvata; se è già nota (salvata o aperta) la riusa.
+pub async fn open_unsaved(lib: &Mutex<Library>, client: &reqwest::Client, base: &str, auth: Option<&Auth>, input: &str) -> Result<SourceMeta, String> {
+    let link = ia::parse_link(input).ok_or_else(|| "Link non riconosciuto".to_string())?;
+    let known = lib.lock().unwrap().known(&link.item_id);
+    if let Some(meta) = known {
+        return Ok(meta);
+    }
+    let item = ia::fetch_item(client, base, auth, &link.item_id).await?;
+    Ok(lib.lock().unwrap().add_unsaved(item))
 }
 
 #[cfg(test)]
