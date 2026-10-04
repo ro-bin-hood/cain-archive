@@ -25,10 +25,11 @@ First public release.
 - Import and export collections as text/CSV files, including drag & drop of list files.
 - Quick open: paste an archive.org link to browse an item without saving it, then star it to keep it.
 - Readable source tags that strip the common prefix of a family of identifiers.
-- Login for items that require an archive.org account; the password is never stored and the session is encrypted for the current Windows user (DPAPI).
+- Login for items that require an archive.org account; the password is never stored and the session is encrypted for the current user (DPAPI on Windows, the system keyring on Linux).
 - Light, dark or automatic theme; English interface, with Italian included. A language is added by dropping a JSON file into `src/locales/`; missing texts fall back to English.
 - Windows-safe file names: forbidden characters, reserved names and path traversal are handled, collisions get ` (2)`, ` (3)`…
 - Resizable sidebar.
+- Linux builds: `.deb` package and AppImage, alongside the Windows installer and portable zip.
 - New logo: vector emblem with the temple, Cain with his staff and the log.
 
 ### Changed

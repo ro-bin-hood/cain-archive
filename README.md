@@ -20,8 +20,8 @@ Save the items you use into collections, search file names across all of them, a
 - **Resume.** Files download to `name.part` and are renamed only after the size checks out. Interrupted downloads continue via HTTP Range.
 - **Persistent queue.** Close the app mid-download, reopen it, press ▶ and it picks up from where it was.
 - **Retries.** Up to 3 attempts per file with increasing waits, honoring `Retry-After` when the server is busy.
-- **Login** for items that need an archive.org account. Your password is never stored; the session is kept encrypted for your Windows user only (DPAPI).
-- **Light, dark or automatic theme; English or Italian interface** (follows Windows by default). Other languages can be added with a single file, see [Translations](#translations).
+- **Login** for items that need an archive.org account. Your password is never stored; the session is kept encrypted for your user only (DPAPI on Windows, the system keyring on Linux).
+- **Light, dark or automatic theme; English or Italian interface** (follows the system by default). Other languages can be added with a single file, see [Translations](#translations).
 - **Windows-safe file names.** Forbidden characters, reserved names (`CON`, `aux.h`…) and path traversal are handled. Names that would collide get ` (2)`, ` (3)`…
 
 Accepted inputs, one per line:
@@ -33,9 +33,11 @@ Files are saved to `<destination>/<identifier>/<path>`. The default destination 
 
 ## Install
 
-Download the installer (`Cain Archive_x.y.z_x64-setup.exe`) from the [Releases](../../releases) page. A portable zip (`Cain-Archive_x.y.z_x64-portable.zip`) is also available: unzip it anywhere and run `Cain Archive.exe`, nothing gets installed.
+Download the installer (`Cain-Archive_x.y.z_x64-setup.exe`) from the [Releases](../../releases) page. A portable zip (`Cain-Archive_x.y.z_x64-portable.zip`) is also available: unzip it anywhere and run `Cain Archive.exe`, nothing gets installed.
 
 The files are not code-signed, so Windows SmartScreen may warn you: choose *More info → Run anyway*. The app needs WebView2, which is preinstalled on Windows 11.
+
+On Linux, install the `.deb` (Debian, Ubuntu 22.04+ and derivatives) or run the `.AppImage` on any other distribution.
 
 ## Development
 
@@ -54,7 +56,7 @@ npm run check:i18n     # check the translations
 cd src-tauri && cargo test
 ```
 
-Settings and queue live in `%APPDATA%\com.cainarchive.app\`. The login session is in `session.bin` in the same folder, encrypted with DPAPI.
+Settings and queue live in `%APPDATA%\com.cainarchive.app\` on Windows and `~/.local/share/com.cainarchive.app/` on Linux. On Windows the login session is in `session.bin` in the same folder, encrypted with DPAPI; on Linux it is in the system keyring.
 
 ### Translations
 
