@@ -28,9 +28,9 @@ function Row({ hit, tag, checked, words, onToggle }: Props) {
   return (
     <label className="item-row" style={{ cursor: "pointer" }}>
       <input type="checkbox" className="check" checked={checked} onChange={() => onToggle(hit)} />
-      <span className="src" title={hit.item_id}>{tag}</span>
       <span className={`grow name ${hit.original ? "" : "muted"}`} title={hit.name}>{highlight(hit.name, words)}</span>
-      <span className="muted small">{hit.size ? human(hit.size) : "?"}</span>
+      <span className="src" title={hit.item_id}>{tag}</span>
+      <span className="muted small size">{hit.size ? human(hit.size) : "?"}</span>
     </label>
   );
 }
