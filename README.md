@@ -1,10 +1,12 @@
-# IA Downloader
+# Cain Archive
 
-A small desktop app for downloading files from [archive.org](https://archive.org).
+*Stay awhile and download…*
+
+An unofficial desktop downloader for the [Internet Archive](https://archive.org).
 
 Paste one or more item links, pick the files you want, and let it download them in parallel. Downloads resume where they stopped, even after closing the app.
 
-> **Unofficial project.** IA Downloader is not affiliated with, endorsed by, or connected to the Internet Archive. "Internet Archive" is a trademark of its respective owner. Please respect the Internet Archive's [terms of use](https://archive.org/about/terms.php) and the rights attached to each item.
+> **Unofficial project.** Cain Archive is not affiliated with, endorsed by, or connected to the Internet Archive. "Internet Archive" is a trademark of its respective owner. Please respect the Internet Archive's [terms of use](https://archive.org/about/terms.php) and the rights attached to each item.
 
 ## Features
 
@@ -26,7 +28,7 @@ Files are saved to `<destination>/<identifier>/<path>`. The default destination 
 
 ## Install
 
-Download the installer (`IA Downloader_x.y.z_x64-setup.exe`) from the [Releases](../../releases) page.
+Download the installer (`Cain Archive_x.y.z_x64-setup.exe`) from the [Releases](../../releases) page.
 
 The installer is not code-signed, so Windows SmartScreen may warn you: choose *More info → Run anyway*. The app needs WebView2, which is preinstalled on Windows 11.
 
@@ -46,7 +48,7 @@ npm run tauri build    # portable .exe + NSIS installer in src-tauri/target/rele
 cd src-tauri && cargo test
 ```
 
-Settings and queue live in `%APPDATA%\com.iadownloader.app\`. The login session is in `session.bin` in the same folder, encrypted with DPAPI.
+Settings and queue live in `%APPDATA%\com.cainarchive.app\`. The login session is in `session.bin` in the same folder, encrypted with DPAPI.
 
 ## Legacy Python version
 
@@ -56,6 +58,10 @@ Settings and queue live in `%APPDATA%\com.iadownloader.app\`. The login session 
 cd old_ied
 python ied.py
 ```
+
+## Name
+
+A nod to Deckard Cain, the last of the Horadrim and keeper of forgotten lore in *Diablo II*. This project is not affiliated with Blizzard Entertainment.
 
 ## License
 

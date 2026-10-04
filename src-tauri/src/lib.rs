@@ -77,5 +77,5 @@ pub fn run() {
             commands::logout,
         ])
         .run(tauri::generate_context!())
-        .expect("errore all'avvio di IA Downloader");
+        .expect("errore all'avvio di Cain Archive");
 }

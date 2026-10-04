@@ -1,5 +1,5 @@
 mod common;
-use ia_downloader_lib::ia;
+use cain_archive_lib::ia;
 
 #[tokio::test]
 async fn fetch_item_lists_files_without_service_files() {

@@ -1,5 +1,5 @@
 mod common;
-use ia_downloader_lib::{
+use cain_archive_lib::{
     ia::Auth,
     queue::{Queue, Sink, Snapshot},
     types::{Job, JobStatus, NewFile, Settings},

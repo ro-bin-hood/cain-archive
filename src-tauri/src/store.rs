@@ -90,7 +90,9 @@ mod secret {
 #[cfg(not(windows))]
 mod secret {
     use std::path::Path;
-        fn entry() -> Option<keyring::Entry> {
+    const SERVICE: &str = "com.cainarchive.app";
+
+    fn entry() -> Option<keyring::Entry> {
         keyring::Entry::new(SERVICE, "session").ok()
     }
 

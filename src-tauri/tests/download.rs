@@ -1,5 +1,5 @@
 mod common;
-use ia_downloader_lib::{download::{self, Finish, Request}, ia};
+use cain_archive_lib::{download::{self, Finish, Request}, ia};
 use std::{path::Path, sync::Mutex, time::Duration};
 use tokio_util::sync::CancellationToken;
 

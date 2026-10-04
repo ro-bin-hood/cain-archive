@@ -402,6 +402,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "cain-archive"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "dirs 6.0.0",
+ "futures-util",
+ "keyring",
+ "reqwest 0.12.28",
+ "serde",
+ "serde_json",
+ "tauri",
+ "tauri-build",
+ "tauri-plugin-dialog",
+ "tauri-plugin-opener",
+ "tempfile",
+ "tokio",
+ "tokio-util",
+ "urlencoding",
+ "windows-sys 0.59.0",
+]
+
+[[package]]
 name = "cairo-rs"
 version = "0.18.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1658,28 +1680,6 @@ dependencies = [
  "tokio",
  "tower-service",
  "tracing",
-]
-
-[[package]]
-name = "ia-downloader"
-version = "0.1.0"
-dependencies = [
- "axum",
- "dirs 6.0.0",
- "futures-util",
- "keyring",
- "reqwest 0.12.28",
- "serde",
- "serde_json",
- "tauri",
- "tauri-build",
- "tauri-plugin-dialog",
- "tauri-plugin-opener",
- "tempfile",
- "tokio",
- "tokio-util",
- "urlencoding",
- "windows-sys 0.59.0",
 ]
 
 [[package]]

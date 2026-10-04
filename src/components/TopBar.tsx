@@ -13,7 +13,7 @@ export function TopBar({ user, onLogin, onLogout, onSettings }: Props) {
   return (
     <header className="titlebar" data-tauri-drag-region>
       <img src={logo} className="logo" alt="" data-tauri-drag-region />
-      <span className="title" data-tauri-drag-region>IA Downloader</span>
+      <span className="title" data-tauri-drag-region>Cain Archive</span>
       <div className="grow" data-tauri-drag-region />
       <div style={{ position: "relative" }}>
         {user ? (

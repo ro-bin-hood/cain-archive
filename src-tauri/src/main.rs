@@ -2,5 +2,5 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() {
-    ia_downloader_lib::run()
+    cain_archive_lib::run()
 }

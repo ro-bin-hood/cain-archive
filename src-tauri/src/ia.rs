@@ -5,7 +5,7 @@ use serde_json::Value;
 use std::time::Duration;
 
 pub const BASE_URL: &str = "https://archive.org";
-pub const UA: &str = "ia-downloader/2.0";
+pub const UA: &str = "cain-archive/2.0";
 const SKIP_SUFFIX: [&str; 5] = ["_meta.xml", "_files.xml", "_meta.sqlite", "_archive.torrent", "_reviews.xml"];
 
 #[derive(Debug, Clone, PartialEq)]
