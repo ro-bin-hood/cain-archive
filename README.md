@@ -4,13 +4,15 @@
 
 An unofficial desktop downloader for the [Internet Archive](https://archive.org).
 
-Paste one or more item links, pick the files you want, and let it download them in parallel. Downloads resume where they stopped, even after closing the app.
+Save the items you use into collections, search file names across all of them, and download what you pick in parallel. Downloads resume where they stopped, even after closing the app.
 
 > **Unofficial project.** Cain Archive is not affiliated with, endorsed by, or connected to the Internet Archive. "Internet Archive" is a trademark of its respective owner. Please respect the Internet Archive's [terms of use](https://archive.org/about/terms.php) and the rights attached to each item.
 
 ## Features
 
-- **File picker.** Analyze an item and see all its files with type and size. Filter chips ("originals only", extensions) preselect files; you can tick or untick any of them.
+- **Collections.** Save the archive.org items you use often ("sources") into named collections. Their file lists are kept locally, so searching is instant.
+- **Combined search.** Search file names across a collection, a single source or all of them at once; every word must match. Exclude a source from its collection's search with one click.
+- **Quick open.** Paste an archive.org link into the search bar to browse an item without saving it; star it to keep it.
 - **Parallel downloads** (1–8) with speed, progress and estimated time.
 - **Resume.** Files download to `name.part` and are renamed only after the size checks out. Interrupted downloads continue via HTTP Range.
 - **Persistent queue.** Close the app mid-download, reopen it, press ▶ and it picks up from where it was.
@@ -24,7 +26,7 @@ Accepted inputs, one per line:
 - `https://archive.org/download/<identifier>/<file>`: a single file
 - `<identifier>`
 
-Files are saved to `<destination>/<identifier>/<path>`. The default destination is `~/Downloads/archive`; change it from ⚙.
+Files are saved to `<destination>/<identifier>/<path>`. The default destination is `~/Downloads/archive`; change it from ⚙. Collections live in `library.json` and `sources/` next to the settings.
 
 ## Install
 
