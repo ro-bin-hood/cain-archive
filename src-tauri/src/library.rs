@@ -238,6 +238,62 @@ impl Library {
         self.save()
     }
 
+    /// Toglie più sorgenti da una raccolta; quelle rimaste orfane vengono cancellate.
+    pub fn remove_sources(&mut self, collection_id: &str, ids: &[String]) -> Result<(), String> {
+        self.collection_mut(collection_id)?.sources.retain(|r| !ids.contains(&r.item_id));
+        self.drop_orphans();
+        self.save()
+    }
+
+    /// Riferimenti (con la spunta) alle sorgenti indicate: da `from` se dato, altrimenti dalla
+    /// prima raccolta che le contiene.
+    fn refs_for(&self, from: Option<&str>, ids: &[String]) -> Result<Vec<SourceRef>, String> {
+        ids.iter()
+            .map(|id| {
+                if !self.file.sources.contains_key(id) {
+                    return Err(m("Sorgente non trovata", "Source not found").to_string());
+                }
+                let found = self.file.collections.iter().filter(|c| from.is_none_or(|f| c.id == f)).flat_map(|c| c.sources.iter()).find(|r| &r.item_id == id);
+                match (found, from) {
+                    (Some(r), _) => Ok(r.clone()),
+                    (None, Some(_)) => Err(m("Sorgente non trovata", "Source not found").to_string()),
+                    (None, None) => Ok(SourceRef { item_id: id.clone(), included: true }),
+                }
+            })
+            .collect()
+    }
+
+    fn push_refs(&mut self, to: &str, refs: Vec<SourceRef>) -> Result<(), String> {
+        let c = self.collection_mut(to)?;
+        for r in refs {
+            if !c.sources.iter().any(|x| x.item_id == r.item_id) {
+                c.sources.push(r);
+            }
+        }
+        Ok(())
+    }
+
+    /// Copia sorgenti salvate in un'altra raccolta, conservando la spunta; niente doppioni.
+    pub fn copy_sources(&mut self, to: &str, ids: &[String]) -> Result<(), String> {
+        self.collection_mut(to)?;
+        let refs = self.refs_for(None, ids)?;
+        self.push_refs(to, refs)?;
+        self.save()
+    }
+
+    /// Sposta sorgenti da una raccolta a un'altra, conservando la spunta.
+    pub fn move_sources(&mut self, from: &str, to: &str, ids: &[String]) -> Result<(), String> {
+        if from == to {
+            return Err(m("Origine e destinazione coincidono", "Source and destination are the same").into());
+        }
+        self.collection_mut(from)?;
+        self.collection_mut(to)?;
+        let refs = self.refs_for(Some(from), ids)?;
+        self.push_refs(to, refs)?;
+        self.collection_mut(from)?.sources.retain(|r| !ids.contains(&r.item_id));
+        self.save()
+    }
+
     /// Cancella le sorgenti salvate che non sono più in nessuna raccolta.
     fn drop_orphans(&mut self) {
         let used: HashSet<&str> = self.file.collections.iter().flat_map(|c| c.sources.iter().map(|r| r.item_id.as_str())).collect();
@@ -626,6 +682,44 @@ mod tests {
         assert_eq!(name, "Uno");
         assert_eq!(sources, vec![("b".to_string(), Some("Titolo b".to_string())), ("a".to_string(), Some("Titolo a".to_string()))]);
         assert_eq!(lib.export_data("c99").unwrap_err(), "Raccolta non trovata");
+    }
+
+    fn ids_of(lib: &Library, cid: &str) -> Vec<(String, bool)> {
+        let st = lib.state();
+        st.collections.iter().find(|c| c.id == cid).unwrap().sources.iter().map(|s| (s.meta.item_id.clone(), s.included)).collect()
+    }
+
+    #[test]
+    fn sources_move_copy_and_remove_in_bulk() {
+        let d = tempfile::tempdir().unwrap();
+        let mut lib = Library::load(d.path());
+        let a = lib.create_collection("A").unwrap();
+        let b = lib.create_collection("B").unwrap();
+        for id in ["x", "y", "z"] {
+            lib.add_fetched(&a, item(id, &["f"])).unwrap();
+        }
+        lib.set_included(&a, "y", false).unwrap();
+        lib.link_known(&b, "z").unwrap();
+
+        lib.copy_sources(&b, &["x".into(), "y".into(), "z".into()]).unwrap();
+        assert_eq!(ids_of(&lib, &b), [("z".into(), true), ("x".into(), true), ("y".into(), false)], "copia: niente doppioni, spunta conservata");
+        assert_eq!(ids_of(&lib, &a).len(), 3);
+
+        let c = lib.create_collection("C").unwrap();
+        lib.move_sources(&a, &c, &["x".into(), "y".into()]).unwrap();
+        assert_eq!(ids_of(&lib, &a), [("z".into(), true)]);
+        assert_eq!(ids_of(&lib, &c), [("x".into(), true), ("y".into(), false)]);
+        assert!(d.path().join("sources").join("x.json").exists(), "spostata, non orfana");
+
+        lib.remove_sources(&c, &["x".into(), "y".into()]).unwrap();
+        assert!(ids_of(&lib, &c).is_empty());
+        assert!(lib.known("x").is_some(), "ancora in B");
+        lib.remove_sources(&b, &["x".into()]).unwrap();
+        assert!(lib.known("x").is_none() && !d.path().join("sources").join("x.json").exists(), "ora orfana: cancellata");
+
+        assert_eq!(lib.move_sources(&a, &a, &["z".into()]).unwrap_err(), "Origine e destinazione coincidono");
+        assert_eq!(lib.copy_sources("c99", &["z".into()]).unwrap_err(), "Raccolta non trovata");
+        assert_eq!(lib.copy_sources(&b, &["nope".into()]).unwrap_err(), "Sorgente non trovata");
     }
 
 }

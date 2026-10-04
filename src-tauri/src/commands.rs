@@ -211,3 +211,21 @@ pub async fn export_collection(app: AppHandle, state: State<'_, AppState>, id: S
 pub fn set_ui_language(lang: String) {
     crate::i18n::set_language(&lang);
 }
+
+#[tauri::command(async)]
+pub fn remove_sources(state: State<'_, AppState>, collection_id: String, item_ids: Vec<String>) -> Result<LibraryState, String> {
+    state.library.lock().unwrap().remove_sources(&collection_id, &item_ids)?;
+    Ok(lib_state(&state))
+}
+
+#[tauri::command(async)]
+pub fn copy_sources(state: State<'_, AppState>, to: String, item_ids: Vec<String>) -> Result<LibraryState, String> {
+    state.library.lock().unwrap().copy_sources(&to, &item_ids)?;
+    Ok(lib_state(&state))
+}
+
+#[tauri::command(async)]
+pub fn move_sources(state: State<'_, AppState>, from: String, to: String, item_ids: Vec<String>) -> Result<LibraryState, String> {
+    state.library.lock().unwrap().move_sources(&from, &to, &item_ids)?;
+    Ok(lib_state(&state))
+}

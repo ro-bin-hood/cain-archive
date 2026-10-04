@@ -95,6 +95,9 @@ pub fn run() {
             commands::pick_import_file,
             commands::read_import_file,
             commands::set_ui_language,
+            commands::remove_sources,
+            commands::copy_sources,
+            commands::move_sources,
             commands::export_collection,
         ])
         .run(tauri::generate_context!())
