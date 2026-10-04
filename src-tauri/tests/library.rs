@@ -81,10 +81,11 @@ async fn refresh_failure_keeps_the_list() {
     library::add_source(&l, &client, &base, None, &c, "flaky").await.unwrap();
     let e = library::refresh_source(&l, &client, &base, None, "flaky").await.unwrap_err();
     assert!(e.contains("Item vuoto"), "{e}");
-    let g = l.lock().unwrap();
-    assert!(g.known("flaky").unwrap().error.is_some());
-    assert_eq!(g.search(&Scope::All, "", false).unwrap().total, 3);
-    drop(g);
+    {
+        let g = l.lock().unwrap();
+        assert!(g.known("flaky").unwrap().error.is_some());
+        assert_eq!(g.search(&Scope::All, "", false).unwrap().total, 3);
+    }
     assert_eq!(library::refresh_source(&l, &client, &base, None, "nope").await.unwrap_err(), "Sorgente non trovata");
 }
 

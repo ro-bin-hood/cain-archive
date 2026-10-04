@@ -106,13 +106,16 @@ fn push_sources(out: &mut String, sources: &[(String, Option<String>)]) {
     }
 }
 
+/// Sorgenti di una raccolta: (identificatore, titolo).
+pub type SourceList = Vec<(String, Option<String>)>;
+
 /// Una raccolta nel formato di `parse_list`: titolo (se c'è) e link di ogni sorgente.
 pub fn format_list(name: &str, sources: &[(String, Option<String>)]) -> String {
     format_list_with(name, sources, &[])
 }
 
 /// Come `format_list`, con le sotto-raccolte scritte dopo un separatore `# --- Nome ---`.
-pub fn format_list_with(name: &str, sources: &[(String, Option<String>)], subs: &[(String, Vec<(String, Option<String>)>)]) -> String {
+pub fn format_list_with(name: &str, sources: &[(String, Option<String>)], subs: &[(String, SourceList)]) -> String {
     let mut out = format!("# {}\n# Cain Archive: una sorgente per riga, \"titolo, link\"; \"# --- Nome ---\" apre una sotto-raccolta\n", name.trim());
     push_sources(&mut out, sources);
     for (sub, list) in subs {

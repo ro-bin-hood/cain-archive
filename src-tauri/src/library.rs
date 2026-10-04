@@ -1,5 +1,9 @@
 use crate::ia::{self, Auth, FileEntry, Item};
 use crate::i18n::m;
+use crate::import::SourceList;
+
+/// Nome di una raccolta con le sue sorgenti.
+type NamedList = (String, SourceList);
 use crate::search::{self, Filters, SearchResult, SourceIndex};
 use crate::store::write_atomic;
 use serde::{Deserialize, Serialize};
@@ -427,22 +431,21 @@ impl Library {
     }
 
     /// Nome e sorgenti (identificatore, titolo) di una raccolta, nell'ordine in cui sono state aggiunte.
-    pub fn export_data(&self, id: &str) -> Result<(String, Vec<(String, Option<String>)>), String> {
+    pub fn export_data(&self, id: &str) -> Result<NamedList, String> {
         let c = self.file.collections.iter().find(|c| c.id == id).ok_or_else(|| m("Raccolta non trovata", "Collection not found").to_string())?;
         let sources = c.sources.iter().map(|r| (r.item_id.clone(), self.file.sources.get(&r.item_id).and_then(|m| m.title.clone()))).collect();
         Ok((c.name.clone(), sources))
     }
 
     /// Nome, sorgenti e sotto-raccolte (nome, sorgenti) di una raccolta, per l'esportazione.
-    #[allow(clippy::type_complexity)]
-    pub fn export_tree(&self, id: &str) -> Result<(String, Vec<(String, Option<String>)>, Vec<(String, Vec<(String, Option<String>)>)>), String> {
+    pub fn export_tree(&self, id: &str) -> Result<(String, SourceList, Vec<NamedList>), String> {
         let (name, sources) = self.export_data(id)?;
         let subs = self
             .file
             .collections
             .iter()
             .filter(|c| c.parent.as_deref() == Some(id))
-            .map(|c| self.export_data(&c.id).map(|(n, s)| (n, s)))
+            .map(|c| self.export_data(&c.id))
             .collect::<Result<Vec<_>, _>>()?;
         Ok((name, sources, subs))
     }
