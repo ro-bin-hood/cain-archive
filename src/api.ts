@@ -52,6 +52,7 @@ export const api = {
   openUnsaved: (input: string) => invoke<SourceMeta>("open_unsaved", { input }),
   closeUnsaved: (itemId: string) => invoke<LibraryState>("close_unsaved", { itemId }),
   saveUnsaved: (itemId: string, collectionId: string) => invoke<LibraryState>("save_unsaved", { itemId, collectionId }),
+  readImportFile: (path: string) => invoke<ParsedList>("read_import_file", { path }),
   pickImportFile: () => invoke<ParsedList | null>("pick_import_file"),
   exportCollection: (id: string) => invoke<string | null>("export_collection", { id }),
   search: (scope: Scope, query: string, originalsOnly: boolean) => invoke<SearchResult>("search", { scope, query, originalsOnly }),

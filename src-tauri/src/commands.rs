@@ -182,12 +182,13 @@ pub fn search(state: State<'_, AppState>, scope: Scope, query: String, originals
 pub async fn pick_import_file(app: AppHandle) -> Result<Option<ParsedList>, String> {
     let Some(file) = app.dialog().file().add_filter("Lista di sorgenti", &["txt", "csv"]).blocking_pick_file() else { return Ok(None) };
     let path = file.into_path().map_err(|e| e.to_string())?;
-    let bytes = std::fs::read(&path).map_err(|e| format!("Impossibile leggere il file: {e}"))?;
-    let mut list = import::parse_list(&String::from_utf8_lossy(&bytes));
-    if list.name.is_none() {
-        list.name = path.file_stem().map(|s| s.to_string_lossy().into_owned());
-    }
-    Ok(Some(list))
+    import::read_list_file(&path).map(Some)
+}
+
+/// Legge un file di lista trascinato sulla finestra.
+#[tauri::command(async)]
+pub fn read_import_file(path: String) -> Result<ParsedList, String> {
+    import::read_list_file(std::path::Path::new(&path))
 }
 
 /// Salva una raccolta come file di lista; restituisce il percorso scelto (None se annullato).

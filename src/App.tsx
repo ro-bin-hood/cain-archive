@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useReducer, useState } from "react";
+import { useCallback, useEffect, useReducer, useRef, useState, type MouseEvent } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { api, events, type CollectionView, type LibraryState, type ParsedList, type Settings } from "./api";
 import { initialQueue, queueReducer, type View } from "./state";
 import { TopBar } from "./components/TopBar";
@@ -28,6 +29,69 @@ export default function App() {
   const [query, setQuery] = useState("");
   const [alert, setAlert] = useState<string | null>(null);
   const [dialog, setDialog] = useState<Dialog | null>(null);
+  const [dragging, setDragging] = useState(false);
+  const [pending, setPending] = useState<string[]>([]);
+  const [reading, setReading] = useState(false);
+  const [sidebarWidth, setSidebarWidth] = useState(() => {
+    try { return Number(localStorage.getItem("sidebarWidth")) || 250; } catch { return 250; }
+  });
+  const dialogRef = useRef<Dialog | null>(null);
+  dialogRef.current = dialog;
+
+  // File di lista trascinati sulla finestra: si importano uno alla volta, ognuno nella sua finestra.
+  useEffect(() => {
+    const un = getCurrentWebview().onDragDropEvent((e) => {
+      const p = e.payload;
+      if (p.type === "enter" || p.type === "over") setDragging(true);
+      else if (p.type === "leave") setDragging(false);
+      else if (p.type === "drop") {
+        setDragging(false);
+        const lists = p.paths.filter((f) => /\.(txt|csv)$/i.test(f));
+        if (lists.length < p.paths.length) setAlert("Si possono importare solo file .txt o .csv");
+        if (lists.length && !dialogRef.current) setPending(lists);
+      }
+    });
+    return () => { un.then((f) => f()); };
+  }, []);
+
+  useEffect(() => {
+    if (dialog || reading || !pending.length) return;
+    const [next, ...rest] = pending;
+    setPending(rest);
+    setReading(true);
+    api.readImportFile(next)
+      .then((list) => {
+        if (!list.inputs.length) setAlert(`Nessuna sorgente valida in ${next}`);
+        else setDialog({ kind: "add", collectionId: null, prefill: list });
+      })
+      .catch((e) => setAlert(String(e)))
+      .finally(() => setReading(false));
+  }, [dialog, reading, pending]);
+
+  // Bordo trascinabile della barra laterale (180–520 px); doppio clic = larghezza iniziale.
+  const saveWidth = (w: number) => {
+    setSidebarWidth(w);
+    try { localStorage.setItem("sidebarWidth", String(w)); } catch { /* solo comodità */ }
+  };
+  const startResize = (e: MouseEvent) => {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startW = sidebarWidth;
+    let w = startW;
+    const move = (ev: globalThis.MouseEvent) => {
+      w = Math.min(520, Math.max(180, startW + ev.clientX - startX));
+      setSidebarWidth(w);
+    };
+    const up = () => {
+      window.removeEventListener("mousemove", move);
+      window.removeEventListener("mouseup", up);
+      document.body.classList.remove("resizing");
+      saveWidth(w);
+    };
+    document.body.classList.add("resizing");
+    window.addEventListener("mousemove", move);
+    window.addEventListener("mouseup", up);
+  };
 
   useEffect(() => {
     api.getState().then((s) => {
@@ -117,6 +181,7 @@ export default function App() {
       <TopBar user={user} onLogin={() => setDialog({ kind: "login" })} onLogout={() => { api.logout(); setUser(null); }} onSettings={() => setDialog({ kind: "settings" })} />
       <div className="layout">
         <Sidebar
+          width={sidebarWidth}
           lib={lib}
           view={view}
           queueCount={queueCount}
@@ -129,6 +194,7 @@ export default function App() {
           onAddSources={(id) => setDialog({ kind: "add", collectionId: id })}
           onSaveUnsaved={(id) => setDialog({ kind: "save", itemId: id })}
         />
+        <div className="resizer" title="Trascina per ridimensionare · doppio clic per ripristinare" onMouseDown={startResize} onDoubleClick={() => saveWidth(250)} />
         <main className="main-pane">
           {alert && (
             <div className="banner row">
@@ -153,6 +219,7 @@ export default function App() {
           )}
         </main>
       </div>
+      {dragging && <div className="drop-overlay"><div>⤓ Rilascia per importare la raccolta</div></div>}
       <QueueStrip jobs={q.jobs} running={q.running} progress={q.progress} onOpen={() => setView({ kind: "queue" })} />
 
       {dialog?.kind === "settings" && <SettingsPanel settings={settings} onChange={updateSettings} onClose={close} />}

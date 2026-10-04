@@ -4,6 +4,7 @@ import type { View } from "../state";
 import { scopeKey } from "../state";
 
 type Props = {
+  width: number;
   lib: LibraryState;
   view: View;
   queueCount: number;
@@ -17,7 +18,7 @@ type Props = {
   onSaveUnsaved: (itemId: string) => void;
 };
 
-export function Sidebar({ lib, view, queueCount, onSelect, onLibrary, onError, onNewCollection, onImport, onRename, onAddSources, onSaveUnsaved }: Props) {
+export function Sidebar({ width, lib, view, queueCount, onSelect, onLibrary, onError, onNewCollection, onImport, onRename, onAddSources, onSaveUnsaved }: Props) {
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [menu, setMenu] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
@@ -56,7 +57,7 @@ export function Sidebar({ lib, view, queueCount, onSelect, onLibrary, onError, o
   const spin = (id: string) => refreshing.has(id) && <span className="muted small">↻</span>;
 
   return (
-    <nav className="sidebar" onMouseLeave={() => { setMenu(null); setConfirmDelete(null); }}>
+    <nav className="sidebar" style={{ width }} onMouseLeave={() => { setMenu(null); setConfirmDelete(null); }}>
       {lib.unsaved.length > 0 && (
         <>
           <div className="side-head">Non salvate</div>

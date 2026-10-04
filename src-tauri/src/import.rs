@@ -7,6 +7,7 @@
 use crate::ia;
 use serde::Serialize;
 use std::collections::HashSet;
+use std::path::Path;
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct ParsedList {
@@ -54,6 +55,16 @@ pub fn parse_list(text: &str) -> ParsedList {
         }
     }
     ParsedList { name, inputs, invalid }
+}
+
+/// Legge un file di lista; se manca la riga `# nome`, il nome è quello del file.
+pub fn read_list_file(path: &Path) -> Result<ParsedList, String> {
+    let bytes = std::fs::read(path).map_err(|e| format!("Impossibile leggere il file: {e}"))?;
+    let mut list = parse_list(&String::from_utf8_lossy(&bytes));
+    if list.name.is_none() {
+        list.name = path.file_stem().map(|s| s.to_string_lossy().into_owned());
+    }
+    Ok(list)
 }
 
 /// Una raccolta nel formato di `parse_list`: titolo (se c'è) e link di ogni sorgente.
@@ -108,4 +119,20 @@ mod tests {
         assert_eq!(l.inputs, ["https://archive.org/details/uno", "https://archive.org/details/due"]);
         assert!(l.invalid.is_empty());
     }
+    #[test]
+    fn list_file_takes_name_from_file_when_missing() {
+        let d = tempfile::tempdir().unwrap();
+        let f = d.path().join("Mia lista.txt");
+        std::fs::write(&f, "nasa
+").unwrap();
+        let l = read_list_file(&f).unwrap();
+        assert_eq!((l.name.as_deref(), l.inputs.len()), (Some("Mia lista"), 1));
+        std::fs::write(&f, "# Dal file
+nasa
+").unwrap();
+        assert_eq!(read_list_file(&f).unwrap().name.as_deref(), Some("Dal file"));
+        let e = read_list_file(&d.path().join("manca.txt")).unwrap_err();
+        assert!(e.starts_with("Impossibile leggere il file"), "{e}");
+    }
+
 }

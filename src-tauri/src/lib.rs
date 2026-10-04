@@ -92,6 +92,7 @@ pub fn run() {
             commands::save_unsaved,
             commands::search,
             commands::pick_import_file,
+            commands::read_import_file,
             commands::export_collection,
         ])
         .run(tauri::generate_context!())
