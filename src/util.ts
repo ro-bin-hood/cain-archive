@@ -31,22 +31,27 @@ export function hitKey(h: { item_id: string; name: string }): string {
   return `${h.item_id}/${h.name}`;
 }
 
-/** Sigle per le sorgenti di un ambito: si toglie il prefisso comune (fino a un "_" o "-") e resta
- *  la parte che le distingue, es. microsoft_xbox360_a_part1 → a_part1. Con una sola sorgente: l'identificatore intero. */
+/** Sigle per le sorgenti di un ambito. Le sorgenti della stessa "famiglia" (stessa prima parola
+ *  dell'identificatore) perdono il prefisso che hanno in comune, fino a un "_" o "-":
+ *  microsoft_xbox360_a_part1 → a_part1 anche accanto a nasa, che resta nasa. */
 export function tagLabels(ids: string[]): Map<string, string> {
   const uniq = [...new Set(ids)];
-  let prefix = "";
-  if (uniq.length > 1) {
-    prefix = uniq.reduce((p, id) => {
-      let i = 0;
-      while (i < p.length && i < id.length && p[i] === id[i]) i++;
-      return p.slice(0, i);
-    });
-    const cut = Math.max(prefix.lastIndexOf("_"), prefix.lastIndexOf("-"));
-    prefix = cut >= 0 ? prefix.slice(0, cut + 1) : "";
+  const family = (id: string) => id.split(/[_-]/)[0];
+  const groups = new Map<string, string[]>();
+  for (const id of uniq) groups.set(family(id), [...(groups.get(family(id)) ?? []), id]);
+  const out = new Map<string, string>();
+  for (const members of groups.values()) {
+    let prefix = "";
+    if (members.length > 1) {
+      prefix = members.reduce((p, id) => {
+        let i = 0;
+        while (i < p.length && i < id.length && p[i] === id[i]) i++;
+        return p.slice(0, i);
+      });
+      const cut = Math.max(prefix.lastIndexOf("_"), prefix.lastIndexOf("-"));
+      prefix = cut >= 0 ? prefix.slice(0, cut + 1) : "";
+    }
+    for (const id of members) out.set(id, id.slice(prefix.length) || id);
   }
-  return new Map(uniq.map((id) => {
-    const rest = id.slice(prefix.length);
-    return [id, uniq.length > 1 && rest ? rest : id];
-  }));
+  return out;
 }
