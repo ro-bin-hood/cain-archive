@@ -46,9 +46,8 @@ export function SettingsPanel({ settings, onChange, onClose }: Props) {
             <input type="checkbox" className="check" checked={settings.default_originals} onChange={(e) => set({ default_originals: e.target.checked })} />
             Solo originali
           </label>
-          <input className="field" placeholder="Estensioni, es. pdf, mp3 (vuoto = tutte)" value={settings.default_exts} onChange={(e) => set({ default_exts: e.target.value })} />
         </div>
-        <span className="muted small">La cartella vale per i file aggiunti da ora in poi; i filtri per i prossimi item analizzati.</span>
+        <span className="muted small">"Solo originali" decide lo stato iniziale del filtro nella ricerca. La cartella vale per i file aggiunti da ora in poi.</span>
       </aside>
     </div>
   );

@@ -2,8 +2,6 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 
 export type FileEntry = { name: string; size: number; format: string; original: boolean };
-export type Item = { id: string; files: FileEntry[] };
-export type Analyzed = { input: string; item: Item | null; error: string | null };
 export type JobStatus =
   | { kind: "Queued" }
   | { kind: "Downloading" }
@@ -17,11 +15,17 @@ export type Settings = { out_dir: string; workers: number; default_originals: bo
 export type FullState = { settings: Settings; user: string | null; jobs: Job[]; running: boolean };
 export type JobProgress = { id: number; done: number; total: number | null; speed: number };
 export type Snapshot = { jobs: JobProgress[]; done: number; total: number; speed: number; eta_s: number | null };
+export type SourceMeta = { item_id: string; title: string | null; file_count: number; total_size: number; updated_at: number; error: string | null };
+export type SourceView = SourceMeta & { included: boolean };
+export type CollectionView = { id: string; name: string; sources: SourceView[] };
+export type LibraryState = { collections: CollectionView[]; unsaved: SourceMeta[] };
+export type Scope = { kind: "all" } | { kind: "collection"; id: string } | { kind: "source"; item_id: string } | { kind: "unsaved" };
+export type Hit = { item_id: string; name: string; size: number; original: boolean };
+export type SearchResult = { results: Hit[]; total: number };
 export type NewFile = { item_id: string; name: string; size: number };
 
 export const api = {
   getState: () => invoke<FullState>("get_state"),
-  analyze: (text: string) => invoke<Analyzed[]>("analyze_links", { text }),
   enqueue: (files: NewFile[]) => invoke<void>("enqueue", { files }),
   start: () => invoke<void>("start"),
   stop: () => invoke<void>("stop"),
@@ -35,6 +39,19 @@ export const api = {
   pickFolder: () => invoke<string | null>("pick_folder"),
   login: (email: string, password: string) => invoke<string>("login", { email, password }),
   logout: () => invoke<void>("logout"),
+  libraryState: () => invoke<LibraryState>("library_state"),
+  takeLibraryWarning: () => invoke<string | null>("take_library_warning"),
+  createCollection: (name: string) => invoke<LibraryState>("create_collection", { name }),
+  renameCollection: (id: string, name: string) => invoke<LibraryState>("rename_collection", { id, name }),
+  deleteCollection: (id: string) => invoke<LibraryState>("delete_collection", { id }),
+  addSource: (collectionId: string, input: string) => invoke<SourceMeta>("add_source", { collectionId, input }),
+  removeSource: (collectionId: string, itemId: string) => invoke<LibraryState>("remove_source", { collectionId, itemId }),
+  setIncluded: (collectionId: string, itemId: string, included: boolean) => invoke<LibraryState>("set_included", { collectionId, itemId, included }),
+  refreshSource: (itemId: string) => invoke<SourceMeta>("refresh_source", { itemId }),
+  openUnsaved: (input: string) => invoke<SourceMeta>("open_unsaved", { input }),
+  closeUnsaved: (itemId: string) => invoke<LibraryState>("close_unsaved", { itemId }),
+  saveUnsaved: (itemId: string, collectionId: string) => invoke<LibraryState>("save_unsaved", { itemId, collectionId }),
+  search: (scope: Scope, query: string, originalsOnly: boolean) => invoke<SearchResult>("search", { scope, query, originalsOnly }),
 };
 
 export const events = {

@@ -1,25 +1,33 @@
-import { useEffect, useReducer, useState } from "react";
+import { useCallback, useEffect, useReducer, useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { api, events, type Item, type Settings } from "./api";
-import { initialQueue, queueReducer } from "./state";
+import { api, events, type CollectionView, type LibraryState, type Settings } from "./api";
+import { initialQueue, queueReducer, type View } from "./state";
 import { TopBar } from "./components/TopBar";
-import { LinkInput } from "./components/LinkInput";
-import { ItemCard } from "./components/ItemCard";
+import { Sidebar } from "./components/Sidebar";
+import { SearchView } from "./components/SearchView";
 import { QueueView } from "./components/QueueView";
+import { QueueStrip } from "./components/QueueStrip";
+import { AddSourcesDialog } from "./components/AddSourcesDialog";
+import { NameDialog } from "./components/NameDialog";
+import { CollectionPicker } from "./components/CollectionPicker";
 import { SettingsPanel } from "./components/SettingsPanel";
 import { LoginDialog } from "./components/LoginDialog";
 
-type Card = { key: number; input: string; item: Item | null; error: string | null };
-let nextKey = 1;
+type Dialog =
+  | { kind: "settings" } | { kind: "login" }
+  | { kind: "add"; collectionId: string | null }
+  | { kind: "new" } | { kind: "rename"; collection: CollectionView }
+  | { kind: "save"; itemId: string };
 
 export default function App() {
   const [q, dispatch] = useReducer(queueReducer, initialQueue);
   const [settings, setSettings] = useState<Settings | null>(null);
   const [user, setUser] = useState<string | null>(null);
-  const [cards, setCards] = useState<Card[]>([]);
-  const [busy, setBusy] = useState(false);
+  const [lib, setLib] = useState<LibraryState>({ collections: [], unsaved: [] });
+  const [view, setView] = useState<View>({ kind: "search", scope: { kind: "all" } });
+  const [query, setQuery] = useState("");
   const [alert, setAlert] = useState<string | null>(null);
-  const [panel, setPanel] = useState<"settings" | "login" | null>(null);
+  const [dialog, setDialog] = useState<Dialog | null>(null);
 
   useEffect(() => {
     api.getState().then((s) => {
@@ -27,6 +35,8 @@ export default function App() {
       setUser(s.user);
       dispatch({ type: "changed", jobs: s.jobs, running: s.running });
     });
+    api.libraryState().then(setLib);
+    api.takeLibraryWarning().then((w) => w && setAlert(w));
     const subs = [
       events.onChanged((p) => dispatch({ type: "changed", ...p })),
       events.onProgress((snap) => dispatch({ type: "progress", snap })),
@@ -35,19 +45,6 @@ export default function App() {
     return () => { subs.forEach((p) => p.then((un) => un())); };
   }, []);
 
-  const analyze = async (text: string) => {
-    setBusy(true);
-    try {
-      const res = await api.analyze(text);
-      setCards((c) => [...res.map((r) => ({ key: nextKey++, ...r })), ...c]);
-      return true;
-    } catch (e) {
-      setAlert(String(e));
-      return false;
-    } finally {
-      setBusy(false);
-    }
-  };
   // Tema: "system" lascia decidere a prefers-color-scheme, altrimenti forza chiaro/scuro.
   // Anche lo sfondo nativo della finestra si adegua, così ridimensionando non lampeggia bianco.
   const theme = settings?.theme;
@@ -67,54 +64,101 @@ export default function App() {
     return () => mq.removeEventListener("change", apply);
   }, [theme]);
 
-  const closeCard = (key: number) => setCards((c) => c.filter((x) => x.key !== key));
+  const onError = useCallback((msg: string) => setAlert(msg), []);
+
   const updateSettings = (s: Settings) => {
     setSettings(s);
     api.setSettings(s).catch((e) => setAlert(String(e)));
   };
 
+  // Link incollati nella ricerca: si aprono come Non salvate; si seleziona l'ultima aperta.
+  const openLinks = async (links: string[]) => {
+    const errors: string[] = [];
+    let last: string | null = null;
+    for (const l of links) {
+      try {
+        last = (await api.openUnsaved(l)).item_id;
+      } catch (e) {
+        errors.push(`${l}: ${e}`);
+      }
+    }
+    setLib(await api.libraryState());
+    if (last) setView({ kind: "search", scope: { kind: "source", item_id: last } });
+    if (errors.length) setAlert(errors.join("\n"));
+  };
+
+  const queueCount = q.jobs.filter((j) => ["Queued", "Downloading", "Retrying"].includes(j.status.kind)).length;
+  const close = () => setDialog(null);
+
   if (!settings) return null;
   return (
     <>
-      <TopBar
-        user={user}
-        onLogin={() => setPanel("login")}
-        onLogout={() => { api.logout(); setUser(null); }}
-        onSettings={() => setPanel("settings")}
-      />
-      <div className="app">
-        {alert && (
-          <div className="banner row">
-            <span className="grow">{alert}</span>
-            <button className="icon-btn" title="Chiudi" onClick={() => setAlert(null)}>✕</button>
-          </div>
-        )}
-        <LinkInput busy={busy} onAnalyze={analyze} />
-        {cards.map((c) =>
-          c.item ? (
-            <ItemCard
-              key={c.key}
-              item={c.item}
-              defaultOriginals={settings.default_originals}
-              defaultExts={settings.default_exts}
-              onAdd={(files) => { api.enqueue(files); closeCard(c.key); }}
-              onClose={() => closeCard(c.key)}
-            />
-          ) : (
-            <div key={c.key} className="banner row">
-              <span className="grow">
-                <span className="name">{c.input}</span>
-                <br />
-                <span className="err small">{c.error}</span>
-              </span>
-              <button className="icon-btn" title="Chiudi" onClick={() => closeCard(c.key)}>✕</button>
+      <TopBar user={user} onLogin={() => setDialog({ kind: "login" })} onLogout={() => { api.logout(); setUser(null); }} onSettings={() => setDialog({ kind: "settings" })} />
+      <div className="layout">
+        <Sidebar
+          lib={lib}
+          view={view}
+          queueCount={queueCount}
+          onSelect={setView}
+          onLibrary={setLib}
+          onError={onError}
+          onNewCollection={() => setDialog({ kind: "new" })}
+          onRename={(c) => setDialog({ kind: "rename", collection: c })}
+          onAddSources={(id) => setDialog({ kind: "add", collectionId: id })}
+          onSaveUnsaved={(id) => setDialog({ kind: "save", itemId: id })}
+        />
+        <main className="main-pane">
+          {alert && (
+            <div className="banner row">
+              <span className="grow" style={{ whiteSpace: "pre-line" }}>{alert}</span>
+              <button className="icon-btn" title="Chiudi" onClick={() => setAlert(null)}>✕</button>
             </div>
-          ),
-        )}
-        <QueueView jobs={q.jobs} running={q.running} progress={q.progress} />
-        {panel === "settings" && <SettingsPanel settings={settings} onChange={updateSettings} onClose={() => setPanel(null)} />}
-        {panel === "login" && <LoginDialog onDone={(u) => { setUser(u); setPanel(null); }} onClose={() => setPanel(null)} />}
+          )}
+          {view.kind === "queue" ? (
+            <QueueView jobs={q.jobs} running={q.running} progress={q.progress} />
+          ) : (
+            <SearchView
+              scope={view.scope}
+              lib={lib}
+              query={query}
+              onQuery={setQuery}
+              defaultOriginals={settings.default_originals}
+              onLibrary={setLib}
+              onOpenLinks={openLinks}
+              onSaveUnsaved={(id) => setDialog({ kind: "save", itemId: id })}
+              onError={onError}
+            />
+          )}
+        </main>
       </div>
+      <QueueStrip jobs={q.jobs} running={q.running} progress={q.progress} onOpen={() => setView({ kind: "queue" })} />
+
+      {dialog?.kind === "settings" && <SettingsPanel settings={settings} onChange={updateSettings} onClose={close} />}
+      {dialog?.kind === "login" && <LoginDialog onDone={(u) => { setUser(u); close(); }} onClose={close} />}
+      {dialog?.kind === "add" && <AddSourcesDialog lib={lib} initialCollection={dialog.collectionId} onLibrary={setLib} onClose={close} />}
+      {dialog?.kind === "new" && (
+        <NameDialog title="Nuova raccolta" confirm="Crea" onClose={close} onSubmit={async (name) => {
+          const st = await api.createCollection(name);
+          setLib(st);
+          setView({ kind: "search", scope: { kind: "collection", id: st.collections[st.collections.length - 1].id } });
+          close();
+        }} />
+      )}
+      {dialog?.kind === "rename" && (
+        <NameDialog title="Rinomina raccolta" initial={dialog.collection.name} confirm="Rinomina" onClose={close} onSubmit={async (name) => {
+          setLib(await api.renameCollection(dialog.collection.id, name));
+          close();
+        }} />
+      )}
+      {dialog?.kind === "save" && (
+        <CollectionPicker lib={lib} onClose={close}
+          onPick={async (cid) => { setLib(await api.saveUnsaved(dialog.itemId, cid)); close(); }}
+          onCreate={async (name) => {
+            const st = await api.createCollection(name);
+            setLib(await api.saveUnsaved(dialog.itemId, st.collections[st.collections.length - 1].id));
+            close();
+          }} />
+      )}
     </>
   );
 }
