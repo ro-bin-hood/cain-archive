@@ -29,7 +29,6 @@
   "sidebar.refreshAll": "Refresh all",
   "sidebar.export": "Export…",
   "sidebar.delete": "Delete",
-  "sidebar.confirmDelete": "Confirm delete",
   "sidebar.includeInSearch": "Include in the collection search",
   "sidebar.removeFromCollection": "Remove from collection",
   "sidebar.removeSelected": "Remove from collection ({n})",
@@ -38,6 +37,10 @@
   "sidebar.queue": "Queue",
   "sidebar.refreshFailed": "Refresh failed for {list}",
   "sidebar.exported": "Collection exported to {path}",
+  "sidebar.exportSelected": "Export {n} collections…",
+  "sidebar.exportedMany": "{n} collections exported to {path}",
+  "sidebar.enableAll": "Enable all sources",
+  "sidebar.disableAll": "Disable all sources",
 
   "search.placeholder": "Search files… or paste an archive.org link",
   "search.titleAll.one": "All sources · {n} source",
@@ -92,6 +95,9 @@
   "dialog.newSubcollection": "New subcollection",
   "dialog.renameCollection": "Rename collection",
   "dialog.createAndSave": "Create and save",
+  "dialog.deleteCollection": "Delete “{name}”?",
+  "dialog.deleteCollectionText": "The collection is removed from the library. Files already downloaded stay on disk.",
+  "dialog.deleteCollectionWithSubs": "The collection and its subcollections are removed from the library. Files already downloaded stay on disk.",
 
   "queue.downloading": "{n} downloading",
   "queue.strip.one": "Queue: {n} file",

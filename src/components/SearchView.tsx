@@ -125,6 +125,26 @@ export function SearchView({ scope, lib, jobs, query, onQuery, defaultOriginals,
   for (const e of exts) if (!extChips.some((c) => c.ext === e)) extChips.push({ ext: e, count: null });
   const shownKeys = new Set(shown.map(hitKey));
   const elsewhere = [...selected.keys()].filter((k) => !shownKeys.has(k)).length;
+  // With several sources, the results are grouped by source (in the sidebar's order), each
+  // under its own heading; within a group they keep the chosen sort.
+  const groups = useMemo(() => {
+    const bySource = new Map<string, Hit[]>();
+    for (const h of shown) {
+      const g = bySource.get(h.item_id);
+      if (g) g.push(h); else bySource.set(h.item_id, [h]);
+    }
+    if (bySource.size < 2) return null;
+    const rank = new Map<string, number>();
+    scopeIds.forEach((id, i) => { if (!rank.has(id)) rank.set(id, i); });
+    return [...bySource].sort(([a], [b]) => (rank.get(a) ?? Infinity) - (rank.get(b) ?? Infinity));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shown, scopeIds.join()]);
+  const titleOf = (id: string) => {
+    const m = lib.collections.flatMap((c) => c.sources).find((s) => s.item_id === id) ?? lib.unsaved.find((m) => m.item_id === id);
+    return m?.title || id;
+  };
+  const row = (h: Hit) => <ResultRow key={hitKey(h)} hit={h} tag={tags.get(h.item_id) ?? h.item_id} checked={selected.has(hitKey(h))} words={words} onToggle={toggle} />;
+
   // "All" skips files already downloaded or queued.
   const selectable = shown.filter((h) => !h.local);
 
@@ -172,7 +192,16 @@ export function SearchView({ scope, lib, jobs, query, onQuery, defaultOriginals,
       )}
       <div className="card results">
         {empty ? <div className="empty">{empty}</div>
-          : shown.map((h) => <ResultRow key={hitKey(h)} hit={h} tag={tags.get(h.item_id) ?? h.item_id} checked={selected.has(hitKey(h))} words={words} onToggle={toggle} />)}
+          : groups ? groups.map(([id, hits]) => (
+            <section key={id} className="result-group">
+              <div className="result-group-head" title={id}>
+                <span className="grow name">{titleOf(id)}</span>
+                <span className="muted small">{hits.length.toLocaleString(locale)}</span>
+              </div>
+              {hits.map(row)}
+            </section>
+          ))
+          : shown.map(row)}
       </div>
     </>
   );

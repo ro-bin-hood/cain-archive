@@ -102,6 +102,7 @@ pub fn run() {
             commands::move_job,
             commands::move_collection,
             commands::export_collection,
+            commands::export_collections,
         ])
         .run(tauri::generate_context!())
         .expect("error while starting Cain Archive");

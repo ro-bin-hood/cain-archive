@@ -29,7 +29,6 @@
   "sidebar.refreshAll": "Aggiorna tutte",
   "sidebar.export": "Esporta…",
   "sidebar.delete": "Elimina",
-  "sidebar.confirmDelete": "Conferma eliminazione",
   "sidebar.includeInSearch": "Includi nella ricerca della raccolta",
   "sidebar.removeFromCollection": "Togli dalla raccolta",
   "sidebar.removeSelected": "Togli dalla raccolta ({n})",
@@ -38,6 +37,10 @@
   "sidebar.queue": "Coda",
   "sidebar.refreshFailed": "Aggiornamento non riuscito per {list}",
   "sidebar.exported": "Raccolta esportata in {path}",
+  "sidebar.exportSelected": "Esporta {n} raccolte…",
+  "sidebar.exportedMany": "{n} raccolte esportate in {path}",
+  "sidebar.enableAll": "Abilita tutte le sorgenti",
+  "sidebar.disableAll": "Disabilita tutte le sorgenti",
 
   "search.placeholder": "Cerca nei file… oppure incolla un link archive.org",
   "search.titleAll.one": "Tutte le sorgenti · {n} sorgente",
@@ -90,6 +93,9 @@
   "dialog.newSubcollection": "Nuova sotto-raccolta",
   "dialog.renameCollection": "Rinomina raccolta",
   "dialog.createAndSave": "Crea e salva",
+  "dialog.deleteCollection": "Eliminare “{name}”?",
+  "dialog.deleteCollectionText": "La raccolta viene tolta dalla libreria. I file già scaricati restano sul disco.",
+  "dialog.deleteCollectionWithSubs": "La raccolta e le sue sotto-raccolte vengono tolte dalla libreria. I file già scaricati restano sul disco.",
 
   "queue.downloading": "{n} in corso",
   "queue.strip.other": "Coda: {n} file",

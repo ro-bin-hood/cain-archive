@@ -3,7 +3,8 @@ import { api, type CollectionView, type LibraryState, type SourceMeta } from "..
 import type { View } from "../state";
 import { scopeKey } from "../state";
 import { useT } from "../i18n";
-import { collectionLabel, orderedCollections } from "../util";
+import { collectionLabel, orderedCollections, withChildren } from "../util";
+import { useDragReorder } from "../dragReorder";
 
 type Props = {
   width: number;
@@ -18,6 +19,8 @@ type Props = {
   onRename: (c: CollectionView) => void;
   onAddSources: (collectionId: string) => void;
   onSaveUnsaved: (itemId: string) => void;
+  /** Asks for confirmation, then deletes the collection. */
+  onDelete: (c: CollectionView) => void;
   /** Asks for a new collection name, creates it, then runs `then` with its id. */
   onNewCollectionThen: (then: (collectionId: string) => Promise<void>) => void;
   onNewSubcollection: (parentId: string) => void;
@@ -28,19 +31,21 @@ type Props = {
 /** Selected sources (always within one collection) and the open context menu. */
 type Picked = { cid: string; ids: Set<string>; anchor: string };
 type Ctx = { x: number; y: number; cid: string; ids: string[] };
+/** Selected collections (Ctrl/Shift+click), for actions on several at once. */
+type PickedColls = { ids: Set<string>; anchor: string };
 
-export function Sidebar({ width, lib, view, queueCount, onSelect, onLibrary, onError, onNewCollection, onImport, onRename, onAddSources, onSaveUnsaved, onNewCollectionThen, onNewSubcollection, onToggleQueue }: Props) {
+export function Sidebar({ width, lib, view, queueCount, onSelect, onLibrary, onError, onNewCollection, onImport, onRename, onAddSources, onSaveUnsaved, onDelete, onNewCollectionThen, onNewSubcollection, onToggleQueue }: Props) {
   const { t, te } = useT();
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [menu, setMenu] = useState<string | null>(null);
-  const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState<Set<string>>(new Set());
   const [picked, setPicked] = useState<Picked | null>(null);
   const [ctx, setCtx] = useState<Ctx | null>(null);
+  const [pickedColls, setPickedColls] = useState<PickedColls | null>(null);
 
-  // Esc closes the context menu and clears the selection.
+  // Esc closes the menus and clears the selection.
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") { setCtx(null); setPicked(null); } };
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") { setCtx(null); setMenu(null); setPicked(null); setPickedColls(null); } };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
@@ -48,6 +53,7 @@ export function Sidebar({ width, lib, view, queueCount, onSelect, onLibrary, onE
   // Clicking a source: Ctrl adds/removes, Shift selects the range from the last clicked one,
   // a plain click opens the source and makes it the only selected one.
   const clickSource = (e: MouseEvent, c: CollectionView, id: string) => {
+    setPickedColls(null);
     if ((e.ctrlKey || e.metaKey) && picked?.cid === c.id) {
       const ids = new Set(picked.ids);
       if (ids.has(id)) ids.delete(id); else ids.add(id);
@@ -72,38 +78,62 @@ export function Sidebar({ width, lib, view, queueCount, onSelect, onLibrary, onE
     setCtx({ x: e.clientX, y: e.clientY, cid: c.id, ids: [...ids] });
   };
 
+  // Clicking a collection: Ctrl adds/removes it, Shift selects the range (in tree order) from the
+  // last clicked one, a plain click opens it.
+  const clickCollection = (e: MouseEvent, c: CollectionView) => {
+    setMenu(null);
+    if (e.ctrlKey || e.metaKey) {
+      const ids = new Set(pickedColls?.ids ?? (current.startsWith("c:") ? [current.slice(2)] : []));
+      if (ids.has(c.id)) ids.delete(c.id); else ids.add(c.id);
+      setPickedColls({ ids, anchor: c.id });
+      setPicked(null);
+      return;
+    }
+    if (e.shiftKey) {
+      const anchor = pickedColls?.anchor ?? (current.startsWith("c:") ? current.slice(2) : c.id);
+      const order = orderedCollections(lib).map((x) => x.id);
+      const [a, b] = [order.indexOf(anchor), order.indexOf(c.id)].sort((x, y) => x - y);
+      setPickedColls({ ids: new Set(a < 0 ? [c.id] : order.slice(a, b + 1)), anchor: a < 0 ? c.id : anchor });
+      setPicked(null);
+      return;
+    }
+    setPickedColls({ ids: new Set([c.id]), anchor: c.id });
+    setPicked(null);
+    select({ kind: "search", scope: { kind: "collection", id: c.id } });
+  };
+
+  // Right-click on a collection opens its ⋯ menu; inside a multiple selection it keeps it.
+  const collectionMenu = (e: MouseEvent, c: CollectionView) => {
+    e.preventDefault();
+    if (!pickedColls?.ids.has(c.id)) setPickedColls({ ids: new Set([c.id]), anchor: c.id });
+    setCtx(null);
+    setMenu(`c:${c.id}`);
+  };
+
+  // Exports the selected collections, one file each; a subcollection whose parent is also
+  // selected is already inside the parent's file.
+  const exportPicked = (ids: Set<string>) => {
+    setMenu(null);
+    const roots = lib.collections.filter((c) => ids.has(c.id) && !(c.parent && ids.has(c.parent))).map((c) => c.id);
+    api.exportCollections(roots).then((p) => p && onError(t("sidebar.exportedMany", { n: roots.length, path: p }))).catch(fail);
+  };
+
   const selectAll = (c: CollectionView) => {
     setMenu(null);
     setCtx(null);
-    if (c.sources.length) setPicked({ cid: c.id, ids: new Set(c.sources.map((s) => s.item_id)), anchor: c.sources[0].item_id });
+    setPicked(c.sources.length ? { cid: c.id, ids: new Set(c.sources.map((s) => s.item_id)), anchor: c.sources[0].item_id } : null);
   };
 
-  // Dragging a collection by its handle: it moves among its siblings (top-level collections,
-  // or subcollections of the same parent). `over` is the sibling it will land before.
-  const [collDrag, setCollDrag] = useState<{ id: string; over: string | null } | null>(null);
-  const grabCollection = (e: MouseEvent, c: CollectionView) => {
-    e.preventDefault();
-    e.stopPropagation();
-    const siblings = () => [...document.querySelectorAll<HTMLElement>(`.sidebar [data-coll][data-parent="${c.parent ?? ""}"]`)];
-    const targetAt = (y: number) => siblings().find((r) => { const b = r.getBoundingClientRect(); return y < b.top + b.height / 2; })?.dataset.coll ?? null;
-    let over = targetAt(e.clientY);
-    setCollDrag({ id: c.id, over });
-    const move = (ev: globalThis.MouseEvent) => { over = targetAt(ev.clientY); setCollDrag({ id: c.id, over }); };
-    const up = () => {
-      window.removeEventListener("mousemove", move);
-      window.removeEventListener("mouseup", up);
-      document.body.classList.remove("dragging-row");
-      setCollDrag(null);
-      const ids = siblings().map((r) => r.dataset.coll);
-      const from = ids.indexOf(c.id);
-      // Dropped on itself or right after itself: no move.
-      if (over === c.id || (over !== null && ids.indexOf(over) === from + 1) || (over === null && from === ids.length - 1)) return;
-      api.moveCollection(c.id, over).then(onLibrary).catch(fail);
-    };
-    document.body.classList.add("dragging-row");
-    window.addEventListener("mousemove", move);
-    window.addEventListener("mouseup", up);
-  };
+  // Dragging a collection row: it moves among its siblings (top-level collections, or
+  // subcollections of the same parent), taking its sources and subcollections along.
+  const grabCollection = useDragReorder({
+    rows: (id) => {
+      const parent = lib.collections.find((c) => c.id === id)?.parent ?? "";
+      return [...document.querySelectorAll<HTMLElement>(`.sidebar [data-drag-id][data-parent="${parent}"]`)];
+    },
+    onMove: (id, before) => { api.moveCollection(id, before).then(onLibrary).catch(fail); },
+    orderKey: lib.collections.map((c) => c.id).join(),
+  });
 
   const bulk = async (op: () => Promise<LibraryState>) => {
     setCtx(null);
@@ -128,13 +158,13 @@ export function Sidebar({ width, lib, view, queueCount, onSelect, onLibrary, onE
     if (errors.length) onError(t("sidebar.refreshFailed", { list: errors.join("; ") }));
   };
 
-  const removeCollection = async (c: CollectionView) => {
-    if (confirmDelete !== c.id) { setConfirmDelete(c.id); return; }
+  // Enables or disables (in the collection search) every source of the collection and its subcollections.
+  const includeAll = async (c: CollectionView, included: boolean) => {
     setMenu(null);
-    setConfirmDelete(null);
     try {
-      onLibrary(await api.deleteCollection(c.id));
-      if (current === `c:${c.id}`) onSelect({ kind: "search", scope: { kind: "all" } });
+      for (const k of withChildren(lib, c.id)) {
+        for (const src of k.sources) if (src.included !== included) onLibrary(await api.setIncluded(k.id, src.item_id, included));
+      }
     } catch (e) { fail(e); }
   };
 
@@ -145,26 +175,32 @@ export function Sidebar({ width, lib, view, queueCount, onSelect, onLibrary, onE
   const tops = lib.collections.filter((c) => !c.parent);
   const childrenOf = (id: string) => lib.collections.filter((c) => c.parent === id);
   const targets = orderedCollections(lib);
+  const multi = pickedColls !== null && pickedColls.ids.size > 1;
 
   // A collection with its sources and, for a parent, its indented subcollections.
   const renderCollection = (c: CollectionView): ReactNode => {
     const kids = childrenOf(c.id);
     const allSources = [...c.sources, ...kids.flatMap((k) => k.sources)];
     return (
-      <div key={c.id}>
-        <div data-coll={c.id} data-parent={c.parent ?? ""}
-          className={`side-item ${c.parent ? "child" : ""} ${current === `c:${c.id}` ? "on" : ""} ${collDrag?.over === c.id && collDrag.id !== c.id ? "drop-before" : ""} ${collDrag?.id === c.id ? "dragged" : ""}`}
-          onClick={() => select({ kind: "search", scope: { kind: "collection", id: c.id } })}>
-          <span className="grab" title={t("common.dragToReorder")} onMouseDown={(e) => grabCollection(e, c)} onClick={(e) => e.stopPropagation()}>⋮⋮</span>
+      <div key={c.id} className="coll-block" data-drag-id={c.id} data-parent={c.parent ?? ""}>
+        <div className={`side-item ${c.parent ? "child" : ""} ${current === `c:${c.id}` ? "on" : ""} ${multi && pickedColls.ids.has(c.id) ? "picked" : ""}`}
+          onMouseDown={(e) => grabCollection(e, c.id)} onClick={(e) => clickCollection(e, c)} onContextMenu={(e) => collectionMenu(e, c)}>
+          <span className="grab" title={t("common.dragToReorder")}>⋮⋮</span>
           <button className="small-btn" onClick={(e) => { e.stopPropagation(); toggle(c.id); }}>{collapsed.has(c.id) ? "▸" : "▾"}</button>
           <span className="grow name">{c.name}</span>
           <span className="muted small">{allSources.length}</span>
           <span className={`actions ${menu === `c:${c.id}` ? "open" : ""}`}>
-            <button className="small-btn" title={t("common.more")} onClick={(e) => { e.stopPropagation(); setConfirmDelete(null); setMenu(menu === `c:${c.id}` ? null : `c:${c.id}`); }}>⋯</button>
+            <button className="small-btn" title={t("common.more")} onClick={(e) => { e.stopPropagation(); setMenu(menu === `c:${c.id}` ? null : `c:${c.id}`); }}>⋯</button>
           </span>
           {menu === `c:${c.id}` && (
             <div className="menu" onClick={(e) => e.stopPropagation()}>
+              {multi && pickedColls.ids.has(c.id) && <>
+                <button onClick={() => exportPicked(pickedColls.ids)}>{t("sidebar.exportSelected", { n: pickedColls.ids.size })}</button>
+                <div className="menu-sep" />
+              </>}
               <button onClick={() => { setMenu(null); onAddSources(c.id); }}>{t("sidebar.addSources")}</button>
+              <button disabled={allSources.every((s) => s.included)} onClick={() => includeAll(c, true)}>{t("sidebar.enableAll")}</button>
+              <button disabled={!allSources.some((s) => s.included)} onClick={() => includeAll(c, false)}>{t("sidebar.disableAll")}</button>
               <button disabled={!c.sources.length} onClick={() => selectAll(c)}>{t("sidebar.selectAllSources")}</button>
               {!c.parent && <button onClick={() => { setMenu(null); onNewSubcollection(c.id); }}>{t("sidebar.newSubcollection")}</button>}
               <button disabled={!allSources.length} onClick={() => refresh(allSources.map((s) => s.item_id))}>{t("sidebar.refreshAll")}</button>
@@ -173,7 +209,7 @@ export function Sidebar({ width, lib, view, queueCount, onSelect, onLibrary, onE
                 setMenu(null);
                 api.exportCollection(c.id, t("app.listFileType")).then((p) => p && onError(t("sidebar.exported", { path: p }))).catch(fail);
               }}>{t("sidebar.export")}</button>
-              <button className="err" onClick={() => removeCollection(c)}>{confirmDelete === c.id ? t("sidebar.confirmDelete") : t("sidebar.delete")}</button>
+              <button className="err" onClick={() => { setMenu(null); onDelete(c); }}>{t("sidebar.delete")}</button>
             </div>
           )}
         </div>
@@ -209,7 +245,7 @@ export function Sidebar({ width, lib, view, queueCount, onSelect, onLibrary, onE
   };
 
   return (
-    <nav className="sidebar" style={{ width }} onMouseLeave={() => { setMenu(null); setConfirmDelete(null); }}>
+    <nav className="sidebar" style={{ width }} onMouseLeave={() => { setMenu(null); }}>
       {lib.unsaved.length > 0 && (
         <>
           <div className="side-head">{t("sidebar.unsaved")}</div>
@@ -240,7 +276,6 @@ export function Sidebar({ width, lib, view, queueCount, onSelect, onLibrary, onE
         </span>
       </div>
       {tops.map(renderCollection)}
-      {collDrag && collDrag.over === null && <div className="drop-end-line" />}
 
       <div className="grow" />
       <div className={`side-item ${current === "queue" ? "on" : ""}`} onClick={() => { setMenu(null); onToggleQueue(); }}>

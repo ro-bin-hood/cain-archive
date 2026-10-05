@@ -1,4 +1,4 @@
-import { memo, useEffect, useState, type MouseEvent } from "react";
+import { memo, useEffect, useState } from "react";
 import { api, type Job, type JobProgress } from "../api";
 import { human } from "../util";
 import { useT, type T, type TE } from "../i18n";
@@ -18,7 +18,7 @@ function statusText(t: T, te: TE, j: Job, p: JobProgress | undefined, left: numb
   }
 }
 
-function Row({ job, live, onGrab }: { job: Job; live?: JobProgress; onGrab: (e: MouseEvent, id: number) => void }) {
+function Row({ job, live }: { job: Job; live?: JobProgress }) {
   const { t, te } = useT();
   // Countdown to the next attempt, restarting on every new Retrying state.
   const retryKey = job.status.kind === "Retrying" ? `${job.status.attempt}:${job.status.wait_s}` : "";
@@ -38,7 +38,7 @@ function Row({ job, live, onGrab }: { job: Job; live?: JobProgress; onGrab: (e: 
   );
   return (
     <div className="item-row" data-job={job.id}>
-      <span className="grab" title={t("common.dragToReorder")} onMouseDown={(e) => onGrab(e, job.id)}>⋮⋮</span>
+      <span className="grab" title={t("common.dragToReorder")}>⋮⋮</span>
       <div className="grow">
         <div className="name" title={`${job.item_id}/${job.name}`}>{job.name}</div>
         {k === "Downloading" && <div className="bar" style={{ margin: "5px 0 3px" }}><i style={{ width: `${pct}%` }} /></div>}
@@ -56,5 +56,5 @@ function Row({ job, live, onGrab }: { job: Job; live?: JobProgress; onGrab: (e: 
 /** With thousands of queued files, only rows that really changed are redrawn. */
 export const QueueRow = memo(
   Row,
-  (a, b) => a.live === b.live && a.onGrab === b.onGrab && JSON.stringify(a.job) === JSON.stringify(b.job),
+  (a, b) => a.live === b.live && JSON.stringify(a.job) === JSON.stringify(b.job),
 );

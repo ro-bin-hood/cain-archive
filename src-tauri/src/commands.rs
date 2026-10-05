@@ -200,11 +200,35 @@ pub fn read_import_file(path: String) -> AppResult<ParsedList> {
 #[tauri::command]
 pub async fn export_collection(app: AppHandle, state: State<'_, AppState>, id: String, filter_name: String) -> AppResult<Option<String>> {
     let (name, sources, subs) = state.library.lock().unwrap().export_tree(&id)?;
-    let safe: String = name.chars().map(|c| if r#"<>:"/\|?*"#.contains(c) { '_' } else { c }).collect();
-    let Some(file) = app.dialog().file().add_filter(filter_name, &["txt"]).set_file_name(format!("{safe}.txt")).blocking_save_file() else { return Ok(None) };
+    let Some(file) = app.dialog().file().add_filter(filter_name, &["txt"]).set_file_name(format!("{}.txt", safe_file_name(&name))).blocking_save_file() else { return Ok(None) };
     let path = file.into_path().map_err(AppError::other)?;
     std::fs::write(&path, import::format_list_with(&name, &sources, &subs)).map_err(|e| AppError::SaveFileFailed { detail: e.to_string() })?;
     Ok(Some(path.to_string_lossy().into_owned()))
+}
+
+/// Saves several collections as list files, one each, in a folder the user picks; returns the
+/// folder (None if cancelled). Existing files are kept: a clashing name gets " (2)", " (3)"...
+#[tauri::command]
+pub async fn export_collections(app: AppHandle, state: State<'_, AppState>, ids: Vec<String>) -> AppResult<Option<String>> {
+    let lists = {
+        let lib = state.library.lock().unwrap();
+        ids.iter().map(|id| lib.export_tree(id)).collect::<AppResult<Vec<_>>>()?
+    };
+    let Some(dir) = app.dialog().file().blocking_pick_folder() else { return Ok(None) };
+    let dir = dir.into_path().map_err(AppError::other)?;
+    for (name, sources, subs) in lists {
+        let base = safe_file_name(&name);
+        let path = (1..)
+            .map(|n| dir.join(if n == 1 { format!("{base}.txt") } else { format!("{base} ({n}).txt") }))
+            .find(|p| !p.exists())
+            .unwrap();
+        std::fs::write(&path, import::format_list_with(&name, &sources, &subs)).map_err(|e| AppError::SaveFileFailed { detail: e.to_string() })?;
+    }
+    Ok(Some(dir.to_string_lossy().into_owned()))
+}
+
+fn safe_file_name(name: &str) -> String {
+    name.chars().map(|c| if r#"<>:"/\|?*"#.contains(c) { '_' } else { c }).collect()
 }
 
 #[tauri::command(async)]

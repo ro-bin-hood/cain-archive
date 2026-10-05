@@ -14,13 +14,14 @@ import { NameDialog } from "./components/NameDialog";
 import { CollectionPicker } from "./components/CollectionPicker";
 import { SettingsPanel } from "./components/SettingsPanel";
 import { LoginDialog } from "./components/LoginDialog";
+import { ConfirmDialog } from "./components/ConfirmDialog";
 
 type Dialog =
   | { kind: "settings" } | { kind: "login" }
   | { kind: "add"; collectionId: string | null; prefill?: ParsedList }
   | { kind: "new"; then?: (collectionId: string) => Promise<void> }
   | { kind: "newsub"; parent: string } | { kind: "rename"; collection: CollectionView }
-  | { kind: "save"; itemId: string };
+  | { kind: "save"; itemId: string } | { kind: "delete"; collection: CollectionView };
 
 export default function App() {
   const [q, dispatch] = useReducer(queueReducer, initialQueue);
@@ -212,6 +213,7 @@ export default function App() {
           onRename={(c) => setDialog({ kind: "rename", collection: c })}
           onAddSources={(id) => setDialog({ kind: "add", collectionId: id })}
           onSaveUnsaved={(id) => setDialog({ kind: "save", itemId: id })}
+          onDelete={(c) => setDialog({ kind: "delete", collection: c })}
         />
         <div className="resizer" title={t("app.resizeHint")} onMouseDown={startResize} onDoubleClick={() => saveWidth(250)} />
         <main className="main-pane">
@@ -269,6 +271,18 @@ export default function App() {
           setLib(await api.renameCollection(dialog.collection.id, name));
           close();
         }} />
+      )}
+      {dialog?.kind === "delete" && (
+        <ConfirmDialog danger title={t("dialog.deleteCollection", { name: dialog.collection.name })}
+          message={t(lib.collections.some((c) => c.parent === dialog.collection.id) ? "dialog.deleteCollectionWithSubs" : "dialog.deleteCollectionText")}
+          confirm={t("sidebar.delete")} onClose={close}
+          onConfirm={async () => {
+            // The collection open on the right (or one of its subcollections) goes away: show all.
+            const gone = new Set([dialog.collection.id, ...lib.collections.filter((c) => c.parent === dialog.collection.id).map((c) => c.id)]);
+            setLib(await api.deleteCollection(dialog.collection.id));
+            if (view.kind === "search" && view.scope.kind === "collection" && gone.has(view.scope.id)) setView({ kind: "search", scope: { kind: "all" } });
+            close();
+          }} />
       )}
       {dialog?.kind === "save" && (
         <CollectionPicker lib={lib} onClose={close}
