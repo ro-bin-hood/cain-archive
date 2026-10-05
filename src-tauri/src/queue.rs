@@ -137,7 +137,15 @@ impl Queue {
         {
             let mut i = self.inner.lock().unwrap();
             for f in files {
-                if i.jobs.iter().any(|j| j.item_id == f.item_id && j.name == f.name) {
+                // Only real archive.org identifiers: the id becomes a folder name.
+                if !ia::is_ident(&f.item_id) {
+                    continue;
+                }
+                // Already in the queue: added again, a failed or paused file goes back in line.
+                if let Some(j) = i.jobs.iter_mut().find(|j| j.item_id == f.item_id && j.name == f.name) {
+                    if matches!(j.status, JobStatus::Failed { .. } | JobStatus::Paused) {
+                        j.status = JobStatus::Queued;
+                    }
                     continue;
                 }
                 let id = i.next_id;
@@ -298,7 +306,13 @@ impl Queue {
     }
 
     async fn run_job(&self, id: u64, cancel: CancellationToken) {
-        let Some(job) = self.inner.lock().unwrap().jobs.iter().find(|j| j.id == id).cloned() else { return };
+        let found = self.inner.lock().unwrap().jobs.iter().find(|j| j.id == id).cloned();
+        let Some(job) = found else {
+            // Removed between pump and here: free its slot, or the queue would never stop "running".
+            self.inner.lock().unwrap().active.remove(&id);
+            self.pump();
+            return;
+        };
         let auth = self.auth.lock().unwrap().clone();
         let path: Vec<String> = job.name.split('/').map(|s| urlencoding::encode(s).into_owned()).collect();
         let url = format!("{}/download/{}/{}", self.base_url, job.item_id, path.join("/"));

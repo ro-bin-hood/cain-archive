@@ -39,7 +39,7 @@ pub struct Auth {
     pub secret: String,
 }
 
-fn is_ident(s: &str) -> bool {
+pub fn is_ident(s: &str) -> bool {
     !s.is_empty() && s.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '.' | '-'))
 }
 
@@ -114,8 +114,32 @@ pub fn auth_headers(auth: Option<&Auth>) -> HeaderMap {
 }
 
 fn trusted(orig: &Url, next: &Url) -> bool {
+    // Never send credentials in clear text after starting on HTTPS.
+    if orig.scheme() == "https" && next.scheme() != "https" {
+        return false;
+    }
     next.host_str() == orig.host_str()
         || next.host_str().is_some_and(|h| h == "archive.org" || h.ends_with(".archive.org"))
+}
+
+/// Largest JSON body accepted from archive.org (metadata of items with very many files runs to
+/// tens of MB).
+const MAX_JSON: usize = 256 << 20;
+
+/// Reads a JSON body, refusing anything larger than `MAX_JSON` instead of filling memory.
+async fn json_capped(mut resp: Response) -> AppResult<Value> {
+    let too_large = || AppError::InvalidResponse { detail: "response too large".into() };
+    if resp.content_length().is_some_and(|n| n > MAX_JSON as u64) {
+        return Err(too_large());
+    }
+    let mut body = Vec::new();
+    while let Some(chunk) = resp.chunk().await.map_err(|e| AppError::Network { detail: e.to_string() })? {
+        if body.len() + chunk.len() > MAX_JSON {
+            return Err(too_large());
+        }
+        body.extend_from_slice(&chunk);
+    }
+    serde_json::from_slice(&body).map_err(|e| AppError::InvalidResponse { detail: e.to_string() })
 }
 
 /// GET that follows redirects by hand. reqwest would drop Cookie/Authorization when the redirect
@@ -153,7 +177,7 @@ pub async fn fetch_item(client: &Client, base: &str, auth: Option<&Auth>, id: &s
     if !resp.status().is_success() {
         return Err(AppError::Http { status: resp.status().as_u16() });
     }
-    let meta: Value = resp.json().await.map_err(|e| AppError::InvalidResponse { detail: e.to_string() })?;
+    let meta = json_capped(resp).await?;
     let files = files_from_metadata(&meta);
     if files.is_empty() {
         return Err(if auth.is_some() { AppError::ItemUnavailable } else { AppError::ItemUnavailableLogIn });
@@ -188,7 +212,7 @@ pub async fn login(client: &Client, base: &str, email: &str, password: &str) -> 
         .send()
         .await
         .map_err(|e| AppError::Network { detail: e.to_string() })?;
-    let v: Value = resp.json().await.map_err(|e| AppError::InvalidResponse { detail: e.to_string() })?;
+    let v = json_capped(resp).await?;
     parse_login_response(&v, email)
 }
 

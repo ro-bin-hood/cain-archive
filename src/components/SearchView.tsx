@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type ClipboardEvent, type KeyboardEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ClipboardEvent, type KeyboardEvent } from "react";
 import { api, type Hit, type Job, type LibraryState, type Scope, type SearchResult, type Sort } from "../api";
 import { collectionLabel, extractLinks, formatDate, hitKey, human, tagLabels, withChildren } from "../util";
 import { ResultRow } from "./ResultRow";
@@ -36,9 +36,16 @@ export function SearchView({ scope, lib, jobs, query, onQuery, defaultOriginals,
 
   // Search 150 ms after the last change; it runs again when the library changes (refreshed
   // sources) or the queue changes (for the "queued" / "downloaded" state of results).
+  // Only a new search (scope, words, filters) disables the buttons until it answers: the refreshes
+  // caused by the library or the queue (every 250 ms while downloading) don't.
+  const searchKey = JSON.stringify([scope, query, originals, exts, sort]);
+  const lastKey = useRef("");
   useEffect(() => {
     let alive = true;
-    setPending(true);
+    if (lastKey.current !== searchKey) {
+      lastKey.current = searchKey;
+      setPending(true);
+    }
     const t = setTimeout(() => {
       api.search(scope, query, { originals_only: originals, exts, sort })
         .then((r) => {
@@ -46,7 +53,11 @@ export function SearchView({ scope, lib, jobs, query, onQuery, defaultOriginals,
           setResult(r);
           setPending(false);
         })
-        .catch((e) => alive && onError(e));
+        .catch((e) => {
+          if (!alive) return;
+          setPending(false);
+          onError(e);
+        });
     }, 150);
     return () => { alive = false; clearTimeout(t); };
   }, [scope, query, originals, exts, sort, lib, jobs, onError]);

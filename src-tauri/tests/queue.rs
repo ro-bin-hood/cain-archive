@@ -102,6 +102,20 @@ async fn denied_fails_and_retry_requeues() {
     wait_for(&q, "Failed", |js| matches!(&js[0].status, JobStatus::Failed { reason: AppError::AccessDeniedLogIn })).await;
     q.resume_job(q.jobs()[0].id);
     wait_for(&q, "Failed again", |js| matches!(js[0].status, JobStatus::Failed { .. })).await;
+    // Adding it again from search puts it back in line (like any added file, it waits for Start).
+    wait_for(&q, "queue idle", |_| !q.running()).await;
+    q.enqueue(vec![nf("denied", "f.bin")]);
+    assert_eq!(q.jobs().len(), 1);
+    assert_eq!(q.jobs()[0].status, JobStatus::Queued);
+}
+
+#[tokio::test]
+async fn invalid_item_ids_are_refused() {
+    let d = tempfile::tempdir().unwrap();
+    let q = queue("http://127.0.0.1:1", d.path(), None);
+    q.enqueue(vec![nf("../../Startup", "x.exe"), nf("/etc", "x"), nf("", "x"), nf("ok", "a.bin")]);
+    let ids: Vec<String> = q.jobs().into_iter().map(|j| j.item_id).collect();
+    assert_eq!(ids, ["ok"]);
 }
 
 #[tokio::test]
