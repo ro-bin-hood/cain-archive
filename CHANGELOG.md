@@ -20,6 +20,25 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - Right-clicking a collection opens its menu. The browser's own context menu (Back, Refresh, Print…) no longer appears, except in text fields.
 - Deleting a collection asks for confirmation in a dialog instead of a second click on the menu item.
 - Esc also closes the collection and source menus.
+- Adding a failed or paused file again from search puts it back in the queue instead of doing nothing.
+
+### Fixed
+
+- Saving the library, queue and settings flushes to disk before replacing the old file, so a power cut can't leave an empty file. A corrupt library is set aside as `library.bak`, `library.2.bak`… without overwriting an older backup.
+- The file lists of removed sources are deleted only after the library is saved.
+- Copying sources keeps their "included in search" setting from the collection they are copied from.
+- Exported lists whose source titles are web addresses import back correctly.
+- A download removed just as it was starting no longer keeps the queue "running" forever.
+- The search buttons no longer flicker while files download, and they don't stay disabled after a failed search.
+
+### Security
+
+- File names are made safe in more cases: invisible text-direction characters are removed (they could disguise `.exe` files), more Windows device names are caught, and an item can't place files outside its own folder.
+- Exported list files go through the same file-name rules.
+- "Open folder" only ever opens folders.
+- Only `.txt` and `.csv` list files on this computer can be imported, up to 16 MB.
+- Login credentials are never sent over a plain-HTTP redirect, and archive.org responses are size-limited.
+- Removed an unused permission that let the interface open web links.
 
 ## [0.1.0] - 2026-10-04
 

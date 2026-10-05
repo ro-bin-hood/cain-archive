@@ -293,9 +293,9 @@ export function Sidebar({ width, lib, view, queueCount, onSelect, onLibrary, onE
             <button className="muted" onClick={() => { const { cid, ids } = ctx; setCtx(null); onNewCollectionThen(async (to) => { onLibrary(await api.moveSources(cid, to, ids)); setPicked(null); }); }}>＋ {t("common.newCollectionEllipsis")}</button>
             <div className="menu-head">{t("sidebar.copyTo")}</div>
             {targets.filter((c) => c.id !== ctx.cid).map((c) => (
-              <button key={`c${c.id}`} onClick={() => bulk(() => api.copySources(c.id, ctx.ids))}>{collectionLabel(lib, c)}</button>
+              <button key={`c${c.id}`} onClick={() => bulk(() => api.copySources(ctx.cid, c.id, ctx.ids))}>{collectionLabel(lib, c)}</button>
             ))}
-            <button className="muted" onClick={() => { const { ids } = ctx; setCtx(null); onNewCollectionThen(async (to) => { onLibrary(await api.copySources(to, ids)); setPicked(null); }); }}>＋ {t("common.newCollectionEllipsis")}</button>
+            <button className="muted" onClick={() => { const { cid, ids } = ctx; setCtx(null); onNewCollectionThen(async (to) => { onLibrary(await api.copySources(cid, to, ids)); setPicked(null); }); }}>＋ {t("common.newCollectionEllipsis")}</button>
           </div>
         </div>
       )}

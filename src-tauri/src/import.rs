@@ -66,8 +66,10 @@ pub fn parse_list(text: &str) -> ParsedList {
         }
         let fields: Vec<&str> = line.split([',', ';', '\t']).map(clean).filter(|f| !f.is_empty()).collect();
         let is_first = std::mem::replace(&mut first_data, false);
-        // An explicit link wins; a bare identifier counts only if it is the only field on the line.
-        let candidate = fields.iter().find(|f| f.starts_with("http://") || f.starts_with("https://")).copied().or(if fields.len() == 1 { Some(fields[0]) } else { None });
+        // An explicit archive.org link wins (a title may be a URL too: "http://site/, https://archive.org/…");
+        // a bare identifier counts only if it is the only field on the line.
+        let is_url = |f: &&&str| f.starts_with("http://") || f.starts_with("https://");
+        let candidate = fields.iter().filter(is_url).find(|f| ia::parse_link(f).is_some()).or_else(|| fields.iter().find(is_url)).copied().or(if fields.len() == 1 { Some(fields[0]) } else { None });
         match candidate.and_then(|c| ia::parse_link(c).map(|p| (c, p))) {
             Some((c, p)) => {
                 let target = match sections.last_mut() {
@@ -86,8 +88,25 @@ pub fn parse_list(text: &str) -> ParsedList {
     ParsedList { name, inputs, invalid, sections }
 }
 
-/// Reads a list file; without a `# name` line, the name is the file name.
+/// Largest list file read: far beyond any real list, small enough to never strain memory.
+const MAX_LIST_MB: u64 = 16;
+
+/// Reads a .txt/.csv list; without a `# name` line, the name is the file name. The path may come
+/// from the window (a dropped file), so anything else is refused: other file types, folders and
+/// devices, network paths, huge files.
 pub fn read_list_file(path: &Path) -> AppResult<ParsedList> {
+    let ext = path.extension().map(|e| e.to_string_lossy().to_ascii_lowercase());
+    let network = cfg!(windows) && ["\\\\", "//"].iter().any(|p| path.to_string_lossy().starts_with(p));
+    if network || !matches!(ext.as_deref(), Some("txt" | "csv")) {
+        return Err(AppError::NotAListFile);
+    }
+    let meta = std::fs::metadata(path).map_err(|e| AppError::ReadFileFailed { detail: e.to_string() })?;
+    if !meta.is_file() {
+        return Err(AppError::NotAListFile);
+    }
+    if meta.len() > MAX_LIST_MB << 20 {
+        return Err(AppError::FileTooLarge { max_mb: MAX_LIST_MB });
+    }
     let bytes = std::fs::read(path).map_err(|e| AppError::ReadFileFailed { detail: e.to_string() })?;
     let mut list = parse_list(&String::from_utf8_lossy(&bytes));
     if list.name.is_none() {
@@ -181,6 +200,23 @@ nasa
     }
 
     #[test]
+    fn only_list_files_are_read() {
+        let d = tempfile::tempdir().unwrap();
+        let key = d.path().join("id_ed25519");
+        std::fs::write(&key, "secret").unwrap();
+        assert_eq!(read_list_file(&key).unwrap_err(), AppError::NotAListFile);
+        let folder = d.path().join("folder.txt");
+        std::fs::create_dir(&folder).unwrap();
+        assert_eq!(read_list_file(&folder).unwrap_err(), AppError::NotAListFile);
+        let big = d.path().join("big.csv");
+        std::fs::File::create(&big).unwrap().set_len((MAX_LIST_MB << 20) + 1).unwrap();
+        assert_eq!(read_list_file(&big).unwrap_err(), AppError::FileTooLarge { max_mb: MAX_LIST_MB });
+        if cfg!(windows) {
+            assert_eq!(read_list_file(Path::new(r"\\attacker\share\x.txt")).unwrap_err(), AppError::NotAListFile);
+        }
+    }
+
+    #[test]
     fn separators_open_sections() {
         let text = "# x360\nnasa\n\n# --- DLC ---\nuno\ndue\n#--XBLA--\ntre\n# commento\nquattro\n";
         let l = parse_list(text);
@@ -203,6 +239,14 @@ nasa
         let l = parse_list("# x\nuno\nuno\n# --- A ---\nuno\n");
         assert_eq!(l.inputs, ["uno"]);
         assert_eq!(l.sections[0].inputs, ["uno"]);
+    }
+
+    #[test]
+    fn url_titles_read_back() {
+        let text = format_list("Web", &[("capture1".into(), Some("http://example.com/".into()))]);
+        let l = parse_list(&text);
+        assert_eq!(l.inputs, ["https://archive.org/details/capture1"]);
+        assert!(l.invalid.is_empty(), "{:?}", l.invalid);
     }
 
     #[test]

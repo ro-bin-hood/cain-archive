@@ -8,7 +8,11 @@ pub(crate) fn write_atomic(path: &Path, data: &[u8]) -> io::Result<()> {
         fs::create_dir_all(p)?;
     }
     let tmp = path.with_extension("tmp");
-    fs::write(&tmp, data)?;
+    // Flushed to disk before the rename: after a power cut the file is either old or new, never empty.
+    let mut f = fs::File::create(&tmp)?;
+    io::Write::write_all(&mut f, data)?;
+    f.sync_all()?;
+    drop(f);
     fs::rename(tmp, path)
 }
 

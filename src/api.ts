@@ -66,7 +66,7 @@ export const api = {
   createSubcollection: (parent: string, name: string) => invoke<LibraryState>("create_subcollection", { parent, name }),
   moveCollection: (id: string, before: string | null) => invoke<LibraryState>("move_collection", { id, before }),
   removeSources: (collectionId: string, itemIds: string[]) => invoke<LibraryState>("remove_sources", { collectionId, itemIds }),
-  copySources: (to: string, itemIds: string[]) => invoke<LibraryState>("copy_sources", { to, itemIds }),
+  copySources: (from: string | null, to: string, itemIds: string[]) => invoke<LibraryState>("copy_sources", { from, to, itemIds }),
   moveSources: (from: string, to: string, itemIds: string[]) => invoke<LibraryState>("move_sources", { from, to, itemIds }),
   search: (scope: Scope, query: string, filters: Filters) => invoke<SearchResult>("search", { scope, query, filters }),
 };

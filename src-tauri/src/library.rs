@@ -116,8 +116,13 @@ impl Library {
                 LibraryFile::default()
             }
             Ok(bytes) => serde_json::from_slice(&bytes).unwrap_or_else(|_| {
-                match std::fs::rename(&path, dir.join("library.bak")) {
-                    Ok(()) => warning = Some(AppError::LibraryMovedAside),
+                // Never over an older backup: library.bak, library.2.bak, …
+                let bak = (1..)
+                    .map(|n| dir.join(if n == 1 { "library.bak".to_string() } else { format!("library.{n}.bak") }))
+                    .find(|p| !p.exists())
+                    .expect("unbounded range");
+                match std::fs::rename(&path, &bak) {
+                    Ok(()) => warning = Some(AppError::LibraryMovedAside { file: bak.file_name().unwrap_or_default().to_string_lossy().into_owned() }),
                     Err(e) => {
                         warning = Some(AppError::LibraryCorruptNotMoved { detail: e.to_string() });
                         read_only = Some(AppError::LibraryReadOnly { detail: e.to_string() });
@@ -267,14 +272,12 @@ impl Library {
         if self.file.collections.len() == before {
             return Err(AppError::CollectionNotFound);
         }
-        self.drop_orphans();
-        self.save()
+        self.save_dropping_orphans()
     }
 
     pub fn remove_source(&mut self, collection_id: &str, item_id: &str) -> AppResult<()> {
         self.collection_mut(collection_id)?.sources.retain(|r| r.item_id != item_id);
-        self.drop_orphans();
-        self.save()
+        self.save_dropping_orphans()
     }
 
     pub fn set_included(&mut self, collection_id: &str, item_id: &str, included: bool) -> AppResult<()> {
@@ -287,8 +290,7 @@ impl Library {
     /// Removes several sources from a collection; those left orphaned are deleted.
     pub fn remove_sources(&mut self, collection_id: &str, ids: &[String]) -> AppResult<()> {
         self.collection_mut(collection_id)?.sources.retain(|r| !ids.contains(&r.item_id));
-        self.drop_orphans();
-        self.save()
+        self.save_dropping_orphans()
     }
 
     /// References (with their inclusion flag) to the given sources: from `from` if given, otherwise
@@ -320,9 +322,10 @@ impl Library {
     }
 
     /// Copies saved sources into another collection, keeping the inclusion flag; no duplicates.
-    pub fn copy_sources(&mut self, to: &str, ids: &[String]) -> AppResult<()> {
+    /// The flag comes from `from` (the collection copied from) when given.
+    pub fn copy_sources(&mut self, from: Option<&str>, to: &str, ids: &[String]) -> AppResult<()> {
         self.collection_mut(to)?;
-        let refs = self.refs_for(None, ids)?;
+        let refs = self.refs_for(from, ids)?;
         self.push_refs(to, refs)?;
         self.save()
     }
@@ -340,15 +343,20 @@ impl Library {
         self.save()
     }
 
-    /// Deletes saved sources that are no longer in any collection.
-    fn drop_orphans(&mut self) {
+    /// Forgets saved sources that are no longer in any collection, saves, and only then deletes
+    /// their file lists: if saving fails, library.json on disk still finds them.
+    fn save_dropping_orphans(&mut self) -> AppResult<()> {
         let used: HashSet<&str> = self.file.collections.iter().flat_map(|c| c.sources.iter().map(|r| r.item_id.as_str())).collect();
         let orphans: Vec<String> = self.file.sources.keys().filter(|k| !used.contains(k.as_str())).cloned().collect();
+        for id in &orphans {
+            self.file.sources.remove(id);
+            self.index.remove(id);
+        }
+        self.save()?;
         for id in orphans {
-            self.file.sources.remove(&id);
-            self.index.remove(&id);
             let _ = std::fs::remove_file(self.source_path(&id));
         }
+        Ok(())
     }
 
     pub fn known(&self, item_id: &str) -> Option<SourceMeta> {
@@ -686,8 +694,13 @@ mod tests {
         std::fs::write(d.path().join("library.json"), "{rotto").unwrap();
         let mut lib = Library::load(d.path());
         assert!(lib.state().collections.is_empty());
-        assert_eq!(lib.take_warning(), Some(AppError::LibraryMovedAside));
+        assert_eq!(lib.take_warning(), Some(AppError::LibraryMovedAside { file: "library.bak".into() }));
         assert_eq!(lib.take_warning(), None);
+        assert_eq!(std::fs::read_to_string(d.path().join("library.bak")).unwrap(), "{rotto");
+        // A second corrupt library doesn't replace the first backup.
+        std::fs::write(d.path().join("library.json"), "{rotto2").unwrap();
+        let mut lib = Library::load(d.path());
+        assert_eq!(lib.take_warning(), Some(AppError::LibraryMovedAside { file: "library.2.bak".into() }));
         assert_eq!(std::fs::read_to_string(d.path().join("library.bak")).unwrap(), "{rotto");
     }
 
@@ -762,7 +775,7 @@ mod tests {
         lib.set_included(&a, "y", false).unwrap();
         lib.link_known(&b, "z").unwrap();
 
-        lib.copy_sources(&b, &["x".into(), "y".into(), "z".into()]).unwrap();
+        lib.copy_sources(None, &b, &["x".into(), "y".into(), "z".into()]).unwrap();
         assert_eq!(ids_of(&lib, &b), [("z".into(), true), ("x".into(), true), ("y".into(), false)], "copy: no duplicates, inclusion kept");
         assert_eq!(ids_of(&lib, &a).len(), 3);
 
@@ -779,8 +792,14 @@ mod tests {
         assert!(lib.known("x").is_none() && !d.path().join("sources").join("x.json").exists(), "now orphaned: deleted");
 
         assert_eq!(lib.move_sources(&a, &a, &["z".into()]).unwrap_err(), AppError::SameSourceAndDestination);
-        assert_eq!(lib.copy_sources("c99", &["z".into()]).unwrap_err(), AppError::CollectionNotFound);
-        assert_eq!(lib.copy_sources(&b, &["nope".into()]).unwrap_err(), AppError::SourceNotFound);
+        assert_eq!(lib.copy_sources(None, "c99", &["z".into()]).unwrap_err(), AppError::CollectionNotFound);
+        assert_eq!(lib.copy_sources(None, &b, &["nope".into()]).unwrap_err(), AppError::SourceNotFound);
+
+        // z is excluded in A but included in B: a copy from B arrives included.
+        lib.set_included(&a, "z", false).unwrap();
+        let e = lib.create_collection("E").unwrap();
+        lib.copy_sources(Some(&b), &e, &["z".into()]).unwrap();
+        assert_eq!(ids_of(&lib, &e), [("z".into(), true)]);
     }
 
     #[test]

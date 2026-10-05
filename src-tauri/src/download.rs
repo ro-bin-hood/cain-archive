@@ -49,17 +49,30 @@ pub fn part_path(dest: &Path) -> PathBuf {
     PathBuf::from(s)
 }
 
-fn sanitize(part: &str) -> String {
+/// Bidirectional controls can disguise a name: "report\u{202E}txt.exe" shows as "reportexe.txt".
+fn is_bidi(c: char) -> bool {
+    matches!(c, '\u{200E}' | '\u{200F}' | '\u{202A}'..='\u{202E}' | '\u{2066}'..='\u{2069}')
+}
+
+/// One Windows-safe path component: no forbidden or invisible characters, no trailing dots or
+/// spaces, no device names; never empty, `.` or `..`.
+pub fn sanitize(part: &str) -> String {
     let s: String = part
         .chars()
-        .map(|c| if matches!(c, '<' | '>' | ':' | '"' | '\\' | '|' | '?' | '*') || c.is_control() { '_' } else { c })
+        .filter(|&c| !is_bidi(c))
+        .map(|c| if matches!(c, '<' | '>' | ':' | '"' | '/' | '\\' | '|' | '?' | '*') || c.is_control() { '_' } else { c })
         .collect();
     let s = s.trim_end_matches(['.', ' ']);
-    // CON, AUX, COM1… are devices on Windows, even with an extension (aux.h).
+    if s.is_empty() {
+        return "_".into();
+    }
+    // CON, AUX, COM1… are devices on Windows, even with an extension (aux.h) or a space before
+    // it ("CON .txt"); COM¹-COM³ count too.
     let (stem, rest) = s.split_at(s.find('.').unwrap_or(s.len()));
-    let up = stem.to_ascii_uppercase();
-    let reserved = matches!(up.as_str(), "CON" | "PRN" | "AUX" | "NUL")
-        || ((up.starts_with("COM") || up.starts_with("LPT")) && up.len() == 4 && up.as_bytes()[3].is_ascii_digit() && up.as_bytes()[3] != b'0');
+    let up = stem.trim_end().to_ascii_uppercase();
+    let numbered = (up.starts_with("COM") || up.starts_with("LPT"))
+        && matches!(up.get(3..), Some("1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" | "¹" | "²" | "³"));
+    let reserved = matches!(up.as_str(), "CON" | "PRN" | "AUX" | "NUL") || numbered;
     if reserved { format!("{stem}_{rest}") } else { s.to_string() }
 }
 
@@ -70,9 +83,8 @@ pub fn dest_for(out_dir: &Path, item_id: &str, name: &str) -> PathBuf {
         if seg == ".." || seg == "." {
             continue;
         }
-        let s = sanitize(seg);
-        if !s.is_empty() {
-            p.push(s);
+        if !seg.is_empty() {
+            p.push(sanitize(seg));
         }
     }
     p
@@ -251,5 +263,18 @@ mod tests {
     fn dest_for_blocks_traversal() {
         assert_eq!(dest_for(Path::new("/out"), "item", "../../evil/./x.txt"), PathBuf::from("/out/item/evil/x.txt"));
         assert_eq!(dest_for(Path::new("/out"), "item", "a\\..\\b.txt"), PathBuf::from("/out/item/a_.._b.txt"));
+        // The item id is one folder, whatever it contains.
+        assert_eq!(dest_for(Path::new("/out"), "../../x/y", "a.txt"), PathBuf::from("/out/.._.._x_y/a.txt"));
+        assert_eq!(dest_for(Path::new("/out"), "..", "a.txt"), PathBuf::from("/out/_/a.txt"));
+        assert_eq!(dest_for(Path::new("/out"), "item", "..."), PathBuf::from("/out/item/_"));
+    }
+
+    #[test]
+    fn sanitize_drops_bidi_and_catches_more_device_names() {
+        assert_eq!(sanitize("report\u{202E}txt.exe"), "reporttxt.exe");
+        assert_eq!(sanitize("CON .txt"), "CON _.txt");
+        assert_eq!(sanitize("com²"), "com²_");
+        assert_eq!(sanitize("COM0.txt"), "COM0.txt");
+        assert_eq!(sanitize("  "), "_");
     }
 }

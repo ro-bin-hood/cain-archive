@@ -73,12 +73,14 @@ pub async fn pick_folder(app: AppHandle) -> AppResult<Option<String>> {
 #[tauri::command]
 pub fn open_folder(app: AppHandle, state: State<'_, AppState>, id: u64) -> AppResult<()> {
     let job = state.queue.jobs().into_iter().find(|j| j.id == id).ok_or(AppError::JobNotInQueue)?;
-    if job.dest.exists() {
-        app.opener().reveal_item_in_dir(&job.dest).map_err(|e| AppError::OpenFolderFailed { detail: e.to_string() })
-    } else {
-        let dir = job.dest.parent().ok_or(AppError::InvalidFolder)?;
-        app.opener().open_path(dir.to_string_lossy(), None::<&str>).map_err(|e| AppError::OpenFolderFailed { detail: e.to_string() })
+    let failed = |e: tauri_plugin_opener::Error| AppError::OpenFolderFailed { detail: e.to_string() };
+    if job.dest.is_file() {
+        return app.opener().reveal_item_in_dir(&job.dest).map_err(failed);
     }
+    // Not downloaded (yet): open the nearest folder that exists. Only ever a folder: opening a
+    // file here would run it.
+    let dir = job.dest.ancestors().skip(1).find(|p| p.is_dir()).ok_or(AppError::InvalidFolder)?;
+    app.opener().open_path(dir.to_string_lossy(), None::<&str>).map_err(failed)
 }
 
 #[tauri::command]
@@ -228,7 +230,7 @@ pub async fn export_collections(app: AppHandle, state: State<'_, AppState>, ids:
 }
 
 fn safe_file_name(name: &str) -> String {
-    name.chars().map(|c| if r#"<>:"/\|?*"#.contains(c) { '_' } else { c }).collect()
+    crate::download::sanitize(name)
 }
 
 #[tauri::command(async)]
@@ -238,8 +240,8 @@ pub fn remove_sources(state: State<'_, AppState>, collection_id: String, item_id
 }
 
 #[tauri::command(async)]
-pub fn copy_sources(state: State<'_, AppState>, to: String, item_ids: Vec<String>) -> AppResult<LibraryState> {
-    state.library.lock().unwrap().copy_sources(&to, &item_ids)?;
+pub fn copy_sources(state: State<'_, AppState>, from: Option<String>, to: String, item_ids: Vec<String>) -> AppResult<LibraryState> {
+    state.library.lock().unwrap().copy_sources(from.as_deref(), &to, &item_ids)?;
     Ok(lib_state(&state))
 }
 
