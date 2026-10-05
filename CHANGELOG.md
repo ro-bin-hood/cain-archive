@@ -6,6 +6,21 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-10-05
+
+### Added
+
+- Select several collections with Ctrl+click or Shift+click and export them in one go: each one becomes its own list file in the folder you choose. A subcollection selected together with its parent is already inside the parent's file.
+- "Enable all sources" and "Disable all sources" in the collection menu, covering subcollections too.
+- Search results from several sources are grouped under a heading per source, in the sidebar's order.
+
+### Changed
+
+- Collections and queued files can be dragged from anywhere on the row, not only by the handle. The row follows the pointer while the others slide out of its way, and settles into place on drop.
+- Right-clicking a collection opens its menu. The browser's own context menu (Back, Refresh, Print…) no longer appears, except in text fields.
+- Deleting a collection asks for confirmation in a dialog instead of a second click on the menu item.
+- Esc also closes the collection and source menus.
+
 ## [0.1.0] - 2026-10-04
 
 First public release.
@@ -41,5 +56,6 @@ First public release.
 
 - Tightened security settings and linting ahead of publishing.
 
-[Unreleased]: https://github.com/ro-bin-hood/cain-archive/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/ro-bin-hood/cain-archive/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/ro-bin-hood/cain-archive/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/ro-bin-hood/cain-archive/releases/tag/v0.1.0
