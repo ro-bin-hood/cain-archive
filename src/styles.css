@@ -90,7 +90,8 @@ body.resizing{cursor:col-resize;user-select:none}
 .drop-overlay>div{border:2px dashed var(--ac);border-radius:16px;padding:28px 40px;background:var(--card);color:var(--ac);font-size:15px;font-weight:600}
 /* Results: name on the left; tag and size as right-aligned columns */
 .result-group+.result-group{margin-top:10px}
-.result-group-head{display:flex;align-items:center;gap:8px;padding:6px 0 4px;border-bottom:2px solid var(--line);font-weight:600;font-size:12px;color:var(--ac);position:sticky;top:40px;background:var(--card);z-index:1}
+/* Sticky offset = minus .main-pane's top padding: sticky insets from the scroller's padding edge, so 0 would leave a gap rows show through */
+.result-group-head{display:flex;align-items:center;gap:8px;padding:6px 0 4px;border-bottom:2px solid var(--line);font-weight:600;font-size:12px;color:var(--ac);position:sticky;top:-14px;background:var(--card);z-index:1}
 .results .size{width:64px;text-align:right;flex:none}
 .sort{padding:4px 8px;font-size:12px;border-radius:8px}
 /* Source multi-select and context menu */
