@@ -6,6 +6,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-10-06
+
+### Fixed
+
+- When search results are grouped by source, the heading of the group being scrolled stays flush with the top of the list. Rows no longer show through a gap above it or hide under it.
+
 ## [0.2.0] - 2026-10-05
 
 ### Added
@@ -75,6 +81,7 @@ First public release.
 
 - Tightened security settings and linting ahead of publishing.
 
-[Unreleased]: https://github.com/ro-bin-hood/cain-archive/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/ro-bin-hood/cain-archive/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/ro-bin-hood/cain-archive/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/ro-bin-hood/cain-archive/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/ro-bin-hood/cain-archive/releases/tag/v0.1.0
