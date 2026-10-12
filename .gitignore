@@ -12,6 +12,9 @@ dist-ssr/
 *.local
 src-tauri/target/
 src-tauri/gen/
+# Mobile icons that `tauri icon` regenerates: the app is desktop-only
+src-tauri/icons/android/
+src-tauri/icons/ios/
 # Local copy of the executable and installer
 release/
 
