@@ -1,4 +1,4 @@
-<p align="center"><img src="app-icon.svg" width="160" alt="Cain Archive logo"></p>
+<p align="center"><img src="assets/app-icon.svg" width="160" alt="Cain Archive logo"></p>
 
 # Cain Archive
 
